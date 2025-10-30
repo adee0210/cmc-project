@@ -25,7 +25,7 @@ EXTRACT_DATA_CONFIG = {
         "interval": "15m",
         # số giây cho mỗi lần request khi lùi về quá khứ
         # API giới hạn 399 bản ghi => 399 * 15 phút = 99.75 giờ ≈ 4.16 ngày
-        # Dùng 4 ngày để an toàn (345600 giây)
+        # Dùng 4 ngày để an toàn
         "batch_seconds": 4 * 24 * 3600,  # 4 ngày = 345600 giây
         # convertId mặc định (cần chỉnh nếu muốn)
         "convert_id": 2781,

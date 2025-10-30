@@ -1,18 +1,18 @@
 #!/bin/bash
 
-# Script để quản lý dịch vụ Candlestick ETF Extractor
+# Script để quản lý CMC Symbol Project  
 # Sử dụng: ./run.sh start|stop|restart|status
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_FILE="$SCRIPT_DIR/candlestick_etf.pid"
-LOG_FILE="$SCRIPT_DIR/main.log"
+PID_FILE="$SCRIPT_DIR/cmc_project.pid"
+LOG_FILE="$SCRIPT_DIR/cmc_project.log"
 
 PYTHON_EXE="$SCRIPT_DIR/.venv/bin/python"
 # Nếu đang chạy trên Windows (venv sử dụng Scripts), chuyển lại đường dẫn
 if [ -d "$SCRIPT_DIR/.venv/Scripts" ]; then
     PYTHON_EXE="$SCRIPT_DIR/.venv/Scripts/python.exe"
 fi
-PYTHON_CMD="$PYTHON_EXE $SCRIPT_DIR/src/main.py"
+PYTHON_CMD="$PYTHON_EXE $SCRIPT_DIR/src/main.py all"
 
 setup_venv() {
     if [ ! -d "$SCRIPT_DIR/.venv" ]; then
@@ -56,7 +56,7 @@ start() {
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
-            echo "Candlestick ETF Extractor đã đang chạy (PID: $PID)"
+            echo "CMC Project đã đang chạy (PID: $PID)"
             return 1
         else
             echo "Xóa file PID cũ"
@@ -64,7 +64,9 @@ start() {
         fi
     fi
 
-    echo "Khởi động Candlestick ETF Extractor..."
+    echo "Khởi động CMC Project..."
+    echo "  - Chạy Historical Pipeline (lần đầu)"
+    echo "  - Sau đó chạy Realtime Pipeline (liên tục mỗi 15 phút)"
     # Dùng nohup nếu có, fallback chạy bình thường
     if command -v nohup >/dev/null 2>&1; then
         nohup $PYTHON_CMD > "$LOG_FILE" 2>&1 &
@@ -72,7 +74,11 @@ start() {
         $PYTHON_CMD > "$LOG_FILE" 2>&1 &
     fi
     echo $! > "$PID_FILE"
-    echo "Candlestick ETF Extractor đã khởi động (PID: $(cat "$PID_FILE"))"
+    echo "CMC Project đã khởi động (PID: $(cat "$PID_FILE"))"
+    echo "Log file: $LOG_FILE"
+    echo ""
+    echo "Xem log realtime:"
+    echo "  tail -f $LOG_FILE"
 }
 
 stop() {
@@ -83,7 +89,7 @@ stop() {
 
     PID=$(cat "$PID_FILE")
     if ps -p "$PID" > /dev/null 2>&1; then
-        echo "Dừng Candlestick ETF Extractor (PID: $PID)..."
+        echo "Dừng CMC Project (PID: $PID)..."
         kill "$PID"
         sleep 2
         if ps -p "$PID" > /dev/null 2>&1; then
@@ -91,7 +97,7 @@ stop() {
             kill -9 "$PID"
         fi
         rm "$PID_FILE"
-        echo "Candlestick ETF Extractor đã dừng"
+        echo "CMC Project đã dừng"
     else
         echo "Tiến trình không chạy, xóa file PID cũ"
         rm "$PID_FILE"
@@ -108,12 +114,16 @@ status() {
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
-            echo "Candlestick ETF Extractor đang chạy (PID: $PID)"
+            echo "CMC Project đang chạy (PID: $PID)"
+            echo "Log file: $LOG_FILE"
+            echo ""
+            echo "Xem log realtime:"
+            echo "  tail -f $LOG_FILE"
         else
             echo "File PID tồn tại nhưng tiến trình không chạy"
         fi
     else
-        echo "Candlestick ETF Extractor không chạy"
+        echo "CMC Project không chạy"
     fi
 }
 
@@ -132,6 +142,18 @@ case "$1" in
         ;;
     *)
         echo "Sử dụng: $0 {start|stop|restart|status}"
+        echo ""
+        echo "CMC Symbol Project - Extract dữ liệu từ CoinMarketCap"
+        echo ""
+        echo "Commands:"
+        echo "  start     - Khởi động service (historical + realtime liên tục)"
+        echo "  stop      - Dừng service"
+        echo "  restart   - Khởi động lại service"
+        echo "  status    - Kiểm tra trạng thái"
+        echo ""
+        echo "Workflow:"
+        echo "  1. Chạy Historical Pipeline - Lấy toàn bộ lịch sử (chạy 1 lần)"
+        echo "  2. Chạy Realtime Pipeline - Cập nhật liên tục (mỗi 15 phút)"
         exit 1
         ;;
 esac
