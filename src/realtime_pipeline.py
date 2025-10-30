@@ -9,6 +9,7 @@ Pipeline nay co 2 chuc nang chinh:
 import sys
 import os
 import time
+import math
 from datetime import datetime, timedelta
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -86,16 +87,32 @@ class RealtimePipeline:
                 if not success:
                     self.logger.warning("Pipeline gap loi, se thu lai sau")
 
-                # Nghi cho den lan chay tiep theo
-                next_run = datetime.now() + timedelta(seconds=self.loop_interval)
+                # Tinh thoi diem chay tiep theo can can bang voi cac muc interval (vd: 00,15,30,45)
+                now = datetime.now()
+                try:
+                    next_run_ts = (
+                        math.ceil(now.timestamp() / self.loop_interval)
+                        * self.loop_interval
+                    )
+                    next_run = datetime.fromtimestamp(next_run_ts)
+                    sleep_seconds = (next_run - now).total_seconds()
+                    # Neu tinh toan ra so am (do runtime cham hon hop le), fallback ve loop_interval
+                    if sleep_seconds <= 0:
+                        sleep_seconds = self.loop_interval
+                        next_run = now + timedelta(seconds=sleep_seconds)
+                except Exception:
+                    # fallback an toan
+                    next_run = now + timedelta(seconds=self.loop_interval)
+                    sleep_seconds = self.loop_interval
+
                 self.logger.info(
                     f"\nLan chay tiep theo: {next_run.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
                 self.logger.info(
-                    f"Nghi {self.loop_interval} giay ({self.loop_interval / 60:.1f} phut)\n"
+                    f"Nghi {int(sleep_seconds)} giay ({sleep_seconds / 60:.1f} phut)\n"
                 )
 
-                time.sleep(self.loop_interval)
+                time.sleep(sleep_seconds)
 
         except KeyboardInterrupt:
             self.logger.info("\n\nNhan tin hieu dung (Ctrl+C)")
