@@ -237,9 +237,6 @@ class Extract:
                     "volume": quote_data.get("volume"),
                     "market_cap": quote_data.get("marketCap"),
                     "circulating_supply": quote_data.get("circulatingSupply"),
-                    "timestamp": self.converter.iso_to_sql_datetime(
-                        quote_data.get("timestamp")
-                    ),
                 }
                 rows.append(row)
 
