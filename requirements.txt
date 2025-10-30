@@ -1,0 +1,5 @@
+requests
+pymongo
+python-dotenv
+pandas
+git+https://github.com/rongardF/tvdatafeed.git
