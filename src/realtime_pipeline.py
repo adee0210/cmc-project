@@ -1,9 +1,9 @@
 """
-Realtime Pipeline - Quan ly viec extract va load du lieu realtime lien tuc.
+Realtime Pipeline - Quản lý việc extract và load dữ liệu realtime liên tục.
 
-Pipeline nay co 2 chuc nang chinh:
-1. Bu du lieu thieu (gap filling) - Chay 1 lan khi khoi dong
-2. Cap nhat du lieu moi lien tuc - Chay theo interval
+Pipeline này có 2 chức năng chính:
+1. Bù dữ liệu thiếu (gap filling) - Chạy 1 lần khi khởi động
+2. Cập nhật dữ liệu mới liên tục - Chạy theo interval
 """
 
 import sys
@@ -21,12 +21,12 @@ from src.discord_alert_util import DiscordAlertUtil
 
 
 class RealtimePipeline:
-    """Pipeline de chay realtime extract + load lien tuc."""
+    """Pipeline để chạy realtime extract + load liên tục."""
 
     def __init__(self, loop_interval: int = 900):
         """
         Args:
-            loop_interval: Thoi gian nghi giua cac lan chay (giay), mac dinh 900s - 15 phut
+            loop_interval: Thời gian nghỉ giữa các lần chạy (giây), mặc định 900s - 15 phút
         """
         self.extractor = RealtimeExtract()
         self.loader = RealtimeLoad()
@@ -36,19 +36,19 @@ class RealtimePipeline:
         self.is_running = False
 
     def run_once(self):
-        """Chay pipeline realtime mot lan (bu du lieu + lay moi nhat)."""
-        self.logger.info("\nREALTIME PIPELINE - BAT DAU")
+        """Chạy pipeline realtime một lần (bù dữ liệu + lấy mới nhất)."""
+        self.logger.info("\nREALTIME PIPELINE - BẮT ĐẦU")
 
         try:
-            # Extract du lieu (se tu dong bu khoang trong)
+            # Extract dữ liệu (sẽ tự động bù khoảng trống)
             data_map = self.extractor.extract()
 
-            # Load vao MongoDB
+            # Load vào MongoDB
             self.loader.realtime_load(data_map=data_map)
 
-            # Thong ke
+            # Thống kê
             total_records = sum(len(df) for df in data_map.values() if not df.empty)
-            self.logger.info(f"\nHOAN THANH - Tong cong: {total_records} ban ghi moi")
+            self.logger.info(f"\nHOÀN THÀNH - Tổng cộng: {total_records} bản ghi mới")
 
             # Kiểm tra và gửi cảnh báo nếu không có data
             if total_records == 0:
@@ -63,29 +63,29 @@ class RealtimePipeline:
             return True
 
         except Exception as e:
-            self.logger.error(f"Loi trong pipeline: {str(e)}")
+            self.logger.error(f"Lỗi trong pipeline: {str(e)}")
             # Gửi cảnh báo lỗi
             self.discord_alert.alert_data_fetch_error("Realtime Pipeline", str(e))
             return False
 
     def run(self, continuous: bool = False):
-        """Chay pipeline realtime.
+        """Chạy pipeline realtime.
 
         Args:
-            continuous: Neu True, chay lien tuc theo interval. Neu False, chi chay 1 lan.
+            continuous: Nếu True, chạy liên tục theo interval. Nếu False, chỉ chạy 1 lần.
         """
         if not continuous:
-            # Chay 1 lan
+            # Chạy 1 lần
             self.run_once()
             return
 
-        # Chay lien tuc
+        # Chạy liên tục
         self.is_running = True
-        self.logger.info("\nREALTIME PIPELINE - CHE DO LIEN TUC")
+        self.logger.info("\nREALTIME PIPELINE - CHẾ ĐỘ LIÊN TỤC")
         self.logger.info(
-            f"Interval: {self.loop_interval} giay ({self.loop_interval / 60:.1f} phut)"
+            f"Interval: {self.loop_interval} giây ({self.loop_interval / 60:.1f} phút)"
         )
-        self.logger.info("Nhan Ctrl+C de dung\n")
+        self.logger.info("Nhấn Ctrl+C để dừng\n")
 
         run_count = 0
 
@@ -93,15 +93,15 @@ class RealtimePipeline:
             while self.is_running:
                 run_count += 1
                 self.logger.info(
-                    f"\nVONG LAP #{run_count} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"\nVÒNG LẶP #{run_count} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
 
                 success = self.run_once()
 
                 if not success:
-                    self.logger.warning("Pipeline gap loi, se thu lai sau")
+                    self.logger.warning("Pipeline gặp lỗi, sẽ thử lại sau")
 
-                # Tinh thoi diem chay tiep theo can can bang voi cac muc interval (vd: 00,15,30,45)
+                # Tính thời điểm chạy tiếp theo cần cân bằng với các mốc interval (vd: 00,15,30,45)
                 now = datetime.now()
                 try:
                     next_run_ts = (
@@ -110,38 +110,38 @@ class RealtimePipeline:
                     )
                     next_run = datetime.fromtimestamp(next_run_ts)
                     sleep_seconds = (next_run - now).total_seconds()
-                    # Neu tinh toan ra so am (do runtime cham hon hop le), fallback ve loop_interval
+                    # Nếu tính toán ra số âm (do runtime chậm hơn hợp lệ), fallback về loop_interval
                     if sleep_seconds <= 0:
                         sleep_seconds = self.loop_interval
                         next_run = now + timedelta(seconds=sleep_seconds)
                 except Exception:
-                    # fallback an toan
+                    # fallback an toàn
                     next_run = now + timedelta(seconds=self.loop_interval)
                     sleep_seconds = self.loop_interval
 
                 self.logger.info(
-                    f"\nLan chay tiep theo: {next_run.strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"\nLần chạy tiếp theo: {next_run.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
                 self.logger.info(
-                    f"Nghi {int(sleep_seconds)} giay ({sleep_seconds / 60:.1f} phut)\n"
+                    f"Nghỉ {int(sleep_seconds)} giây ({sleep_seconds / 60:.1f} phút)\n"
                 )
 
                 time.sleep(sleep_seconds)
 
         except KeyboardInterrupt:
-            self.logger.info("\n\nNhan tin hieu dung (Ctrl+C)")
-            self.logger.info(f"Tong so vong lap da chay: {run_count}")
-            self.logger.info("Dang dung Realtime Pipeline")
+            self.logger.info("\n\nNhận tín hiệu dừng (Ctrl+C)")
+            self.logger.info(f"Tổng số vòng lặp đã chạy: {run_count}")
+            self.logger.info("Đang dừng Realtime Pipeline")
             self.is_running = False
         except Exception as e:
-            self.logger.error(f"\nLoi nghiem trong: {str(e)}")
+            self.logger.error(f"\nLỗi nghiêm trọng: {str(e)}")
             self.is_running = False
             raise
 
     def stop(self):
-        """Dung pipeline."""
+        """Dừng pipeline."""
         self.is_running = False
-        self.logger.info("Da yeu cau dung pipeline")
+        self.logger.info("Đã yêu cầu dừng pipeline")
 
 
 if __name__ == "__main__":
@@ -150,13 +150,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Realtime Pipeline")
     parser.add_argument(
-        "--continuous", action="store_true", help="Chay lien tuc theo interval"
+        "--continuous", action="store_true", help="Chạy liên tục theo interval"
     )
     parser.add_argument(
         "--interval",
         type=int,
         default=900,
-        help="Thoi gian nghi giua cac lan chay (giay), mac dinh 900s - 15 phut",
+        help="Thời gian nghỉ giữa các lần chạy (giây), mặc định 900s - 15 phút",
     )
 
     args = parser.parse_args()

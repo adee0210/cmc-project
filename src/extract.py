@@ -85,7 +85,7 @@ class Extract:
                     if df.empty:
                         self.discord_alert.alert_no_data_from_source(
                             f"Historical Extract - {symbol.upper()}",
-                            "Khong lay duoc du lieu lich su",
+                            "Không lấy được dữ liệu lịch sử",
                         )
                 except Exception as e:
                     self.logger.error(f"✗ Lỗi khi extract {symbol.upper()}: {str(e)}")

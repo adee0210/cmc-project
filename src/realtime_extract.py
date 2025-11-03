@@ -1,10 +1,10 @@
 """
-Realtime Extract - Lay du lieu realtime va bu vao khoang trong.
+Realtime Extract - Lấy dữ liệu realtime và bù vào khoảng trống.
 
 Logic:
-1. Kiem tra thoi diem cuoi cung co trong DB cho moi symbol
-2. Lay du lieu tu thoi diem do den hien tai (bu khoang trong)
-3. Tu dong cap nhat du lieu moi nhat
+1. Kiểm tra thời điểm cuối cùng có trong DB cho mỗi symbol
+2. Lấy dữ liệu từ thời điểm đó đến hiện tại (bù khoảng trống)
+3. Tự động cập nhật dữ liệu mới nhất
 """
 
 import sys
@@ -26,7 +26,7 @@ from src.convert_datetime_util import ConvertDatetime
 
 
 class RealtimeExtract:
-    """Class de extract du lieu realtime va bu vao khoang trong."""
+    """Class để extract dữ liệu realtime và bù vào khoảng trống."""
 
     def __init__(self):
         self.logger = LoggerConfig.logger_config("Realtime Extract CMC")
@@ -50,52 +50,52 @@ class RealtimeExtract:
         # Delay giua requests
         self.request_delay = 0.5
 
-        # API gioi han 399 ban ghi, tuong duong khoang 4 ngay voi interval 15m
+        # API giới hạn 399 bản ghi, tương đương khoảng 4 ngày với interval 15m
         self.max_records_per_request = 399
         self.max_batch_seconds = 4 * 24 * 3600  # 4 ngay
 
-        self.logger.info(f"Khoi tao Realtime Extract voi symbols: {self.symbols}")
+        self.logger.info(f"Khởi tạo Realtime Extract với symbols: {self.symbols}")
 
     def get_latest_datetime_in_db(self, symbol: str) -> Optional[datetime]:
-        """Lay thoi diem moi nhat trong DB cho mot symbol.
+        """Lấy thời điểm mới nhất trong DB cho một symbol.
 
         Args:
-            symbol: Ten symbol (eth, bnb, xrp)
+            symbol: Tên symbol (eth, bnb, xrp)
 
         Returns:
-            datetime cua ban ghi moi nhat, hoac None neu chua co du lieu
+            datetime của bản ghi mới nhất, hoặc None nếu chưa có dữ liệu
         """
         try:
-            # Tim ban ghi moi nhat theo datetime
+            # Tìm bản ghi mới nhất theo datetime
             latest_record = self.collection.find_one(
                 {"symbol": symbol.upper()}, sort=[("datetime", DESCENDING)]
             )
 
             if latest_record and "datetime" in latest_record:
-                # Parse datetime string ve datetime object
+                # Parse datetime string về datetime object
                 datetime_str = latest_record["datetime"]
                 latest_dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
                 self.logger.info(
-                    f"Symbol {symbol.upper()}: Du lieu moi nhat trong DB: {latest_dt}"
+                    f"Symbol {symbol.upper()}: Dữ liệu mới nhất trong DB: {latest_dt}"
                 )
                 return latest_dt
             else:
-                self.logger.info(f"Symbol {symbol.upper()}: Chua co du lieu trong DB")
+                self.logger.info(f"Symbol {symbol.upper()}: Chưa có dữ liệu trong DB")
                 return None
 
         except Exception as e:
-            self.logger.error(f"Loi khi lay datetime moi nhat cho {symbol}: {str(e)}")
+            self.logger.error(f"Lỗi khi lấy datetime mới nhất cho {symbol}: {str(e)}")
             return None
 
     def extract(self) -> Dict[str, pd.DataFrame]:
-        """Extract du lieu realtime cho tat ca symbols.
+        """Extract dữ liệu realtime cho tất cả symbols.
 
         Returns:
             Dict mapping symbol -> DataFrame
         """
         result = {}
 
-        self.logger.info("\nBAT DAU REALTIME EXTRACT")
+        self.logger.info("\nBẮT ĐẦU REALTIME EXTRACT")
 
         for symbol in self.symbols:
             symbol_lower = symbol.lower()

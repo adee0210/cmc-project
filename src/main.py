@@ -7,33 +7,33 @@ from src.convert_datetime_util import ConvertDatetime
 
 
 def main():
-    # Neu truyen doi so 'convert <iso_string>' thi in ket qua chuyen doi
+    # Nếu truyền đối số 'convert <iso_string>' thì in kết quả chuyển đổi
     if len(sys.argv) >= 3 and sys.argv[1] == "convert":
         iso = sys.argv[2]
         conv = ConvertDatetime()
         print(conv.iso_to_sql_datetime(iso))
         return
 
-    # Neu truyen doi so 'realtime' thi chay realtime pipeline LIEN TUC
+    # Nếu truyền đối số 'realtime' thì chạy realtime pipeline LIÊN TỤC
     if len(sys.argv) >= 2 and sys.argv[1] == "realtime":
         from src.realtime_pipeline import RealtimePipeline
 
-        print("\nChay Realtime Pipeline - LIEN TUC")
+        print("\nChạy Realtime Pipeline - LIÊN TỤC")
 
-        # Lay interval tu argument neu co
-        interval = 900  # mac dinh 15 phut
+        # Lấy interval từ argument nếu có
+        interval = 900  # mặc định 15 phút
         if len(sys.argv) >= 3:
             try:
                 interval = int(sys.argv[2])
-                print(f"Interval: {interval} giay ({interval / 60:.1f} phut)")
+                print(f"Interval: {interval} giây ({interval / 60:.1f} phút)")
             except ValueError:
-                print(f"Interval khong hop le, dung mac dinh: {interval} giay")
+                print(f"Interval không hợp lệ, dùng mặc định: {interval} giây")
 
         pipe = RealtimePipeline(loop_interval=interval)
-        pipe.run(continuous=True)  # Chay lien tuc
+        pipe.run(continuous=True)  # Chạy liên tục
         return
 
-    # Neu truyen doi so 'all' thi chay historical TRUOC, sau do realtime LIEN TUC
+    # Nếu truyền đối số 'all' thì chạy historical TRƯỚC, sau đó realtime LIÊN TỤC
     if len(sys.argv) >= 2 and sys.argv[1] == "all":
         from src.pipeline import HistoricalPipeline
         from src.realtime_pipeline import RealtimePipeline
@@ -42,10 +42,10 @@ def main():
 
         print("\n")
         print("=" * 70)
-        print("KIEM TRA DU LIEU LICH SU")
+        print("KIỂM TRA DỮ LIỆU LỊCH SỬ")
         print("=" * 70)
 
-        # Kiem tra xem da co du lieu trong DB chua
+        # Kiểm tra xem đã có dữ liệu trong DB chưa
         mongo_config = MongoConfig()
         mongo_client = mongo_config.get_client()
         db = mongo_client.get_database(EXTRACT_DATA_CONFIG.get("database", "cmc_db"))
@@ -56,32 +56,32 @@ def main():
         total_docs = collection.count_documents({})
         symbols = EXTRACT_DATA_CONFIG.get("symbols", ["eth", "bnb", "xrp"])
 
-        print(f"Tong so documents trong DB: {total_docs}")
+        print(f"Tổng số documents trong DB: {total_docs}")
 
         if total_docs > 0:
-            # Kiem tra chi tiet cho tung symbol
-            print("\nThong ke theo symbol:")
+            # Kiểm tra chi tiết cho từng symbol
+            print("\nThống kê theo symbol:")
             all_have_data = True
             for symbol in symbols:
                 count = collection.count_documents({"symbol": symbol.upper()})
-                print(f"  {symbol.upper()}: {count} ban ghi")
+                print(f"  {symbol.upper()}: {count} bản ghi")
                 if count == 0:
                     all_have_data = False
 
             if all_have_data:
-                print("\n=> Da co du lieu lich su cho tat ca symbols")
-                print("=> BO QUA buoc Historical Pipeline")
+                print("\n=> Đã có dữ liệu lịch sử cho tất cả symbols")
+                print("=> BỎ QUA bước Historical Pipeline")
                 print("\n" + "=" * 70)
             else:
-                print("\n=> Co symbol chua co du lieu")
-                print("=> CHAY Historical Pipeline")
+                print("\n=> Có symbol chưa có dữ liệu")
+                print("=> CHẠY Historical Pipeline")
                 print("\n" + "=" * 70)
-                print("BUOC 1: Chay Historical Pipeline - Lay du lieu lich su")
+                print("BUỚC 1: Chạy Historical Pipeline - Lấy dữ liệu lịch sử")
                 historical_pipe = HistoricalPipeline()
                 historical_pipe.run()
-                print("\nHOAN THANH Historical Pipeline")
+                print("\nHOÀN THÀNH Historical Pipeline")
         else:
-            print("\n=> Chua co du lieu trong DB")
+            print("\n=> Chưa có dữ liệu trong DB")
             print("=> CHAY Historical Pipeline")
             print("\n" + "=" * 70)
             print("BUOC 1: Chay Historical Pipeline - Lay du lieu lich su")
@@ -89,8 +89,8 @@ def main():
             historical_pipe.run()
             print("\nHOAN THANH Historical Pipeline")
 
-        # Lay interval tu argument neu co
-        interval = 900  # mac dinh 15 phut
+        # Lấy interval từ argument nếu có
+        interval = 900  # mặc định 15 phút
         if len(sys.argv) >= 3:
             try:
                 interval = int(sys.argv[2])
@@ -98,19 +98,16 @@ def main():
                 pass
 
         print("\n")
-        print("=" * 70)
-        print("BUOC 2: Chay Realtime Pipeline - Che do LIEN TUC")
-        print("=" * 70)
-        print(f"Interval: {interval} giay ({interval / 60:.1f} phut)")
+        print("BUỚC 2: Chạy Realtime Pipeline - Chế độ LIÊN TỤC")
+        print(f"Interval: {interval} giây ({interval / 60:.1f} phút)")
 
         realtime_pipe = RealtimePipeline(loop_interval=interval)
-        realtime_pipe.run(continuous=True)  # Chay lien tuc
+        realtime_pipe.run(continuous=True)  # Chạy liên tục
         return
 
-    # Mac dinh: chay historical pipeline
     from src.pipeline import HistoricalPipeline
 
-    print("\nChay Historical Pipeline (mac dinh)")
+    print("\nChạy Historical Pipeline (mặc định)")
     pipe = HistoricalPipeline()
     pipe.run()
 

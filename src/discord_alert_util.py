@@ -72,13 +72,13 @@ class DiscordAlertUtil:
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        message = f"CANH BAO: Khong co du lieu tu {source}\n"
-        message += f"Thoi gian: {timestamp}\n"
+        message = f"CANH BAO: Không có dữ liệu từ {source}\n"
+        message += f"Thời gian: {timestamp}\n"
 
         if error_details:
-            message += f"Chi tiet: {error_details}\n"
+            message += f"Chi tiết: {error_details}\n"
 
-        message += f"He thong khong lay duoc du lieu moi tu nguon {source}"
+        message += f"Hệ thống không lấy được dữ liệu mới từ nguồn {source}"
 
         self._send_discord_message(message)
 
@@ -88,14 +88,14 @@ class DiscordAlertUtil:
 
         Args:
             source: Tên nguồn data
-            error_message: Thông điệp lỗi
+            error_message: Nội dung lỗi
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        message = f"LOI: Khong the lay du lieu tu {source}\n"
+        message = f"LỖI: Không thể lấy dữ liệu từ {source}\n"
         message += f"Thoi gian: {timestamp}\n"
-        message += f"Loi: {error_message}\n"
-        message += f"Vui long kiem tra ket noi va cau hinh"
+        message += f"Lỗi: {error_message}\n"
+        message += f"Vui lòng kiểm tra kết nối và cấu hình"
 
         self._send_discord_message(message)
 
@@ -111,19 +111,19 @@ class DiscordAlertUtil:
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        message = f"CANH BAO: Realtime Extract - Khong co du lieu moi\n"
+        message = f"CẢNH BÁO: Realtime Extract - Không có dữ liệu mới\n"
         message += f"Thoi gian: {timestamp}\n"
         message += f"Symbols: {', '.join([s.upper() for s in symbols])}\n"
 
         if last_data_time:
-            message += f"Du lieu cuoi: {last_data_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            message += f"Dữ liệu cuối: {last_data_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
             time_diff = datetime.now() - last_data_time
             minutes = int(time_diff.total_seconds() / 60)
-            message += f"Da {minutes} phut khong co du lieu moi\n"
+            message += f"Đã {minutes} phút không có dữ liệu mới\n"
         else:
-            message += "Da hon 15 phut khong co du lieu moi\n"
+            message += "Đã hơn 15 phút không có dữ liệu mới\n"
 
-        message += "Vui long kiem tra he thong"
+        message += "Vui lòng kiểm tra hệ thống"
 
         self._send_discord_message(message)
 
