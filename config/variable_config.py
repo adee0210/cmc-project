@@ -40,9 +40,7 @@ EXTRACT_DATA_CONFIG = {
     },
 }
 
-
-TELE_CONFIG = {
-    "tele_bot_token": os.getenv("TELE_BOT_TOKEN"),
-    "tele_chat_id": os.getenv("TELE_CHAT_ID"),
-    "tele_message_parse": "HTML",
+DISCORD_CONFIG = {
+    "webhook_url": os.getenv("DISCORD_WEBHOOK_URL", ""),
+    "enabled": os.getenv("DISCORD_ALERT_ENABLED", "false").lower() == "true",
 }

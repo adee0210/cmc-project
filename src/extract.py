@@ -13,6 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config.logger_config import LoggerConfig
 from config.variable_config import EXTRACT_DATA_CONFIG
 from src.convert_datetime_util import ConvertDatetime
+from src.discord_alert_util import DiscordAlertUtil
 
 
 class Extract:
@@ -36,6 +37,7 @@ class Extract:
         self.symbols = self.config.get("symbols", ["eth"])
         self.cmc_symbol_ids = self.config.get("cmc_symbol_ids", {})
         self.converter = ConvertDatetime()
+        self.discord_alert = DiscordAlertUtil()
 
         # Delay giữa các request để tránh rate limit
         self.request_delay = 0.5  # seconds (giảm delay do xử lý song song)
@@ -78,9 +80,20 @@ class Extract:
                     self.logger.info(
                         f"✓ Hoàn thành {symbol.upper()}: {len(df)} bản ghi"
                     )
+
+                    # Gửi cảnh báo nếu không có data
+                    if df.empty:
+                        self.discord_alert.alert_no_data_from_source(
+                            f"Historical Extract - {symbol.upper()}",
+                            "Khong lay duoc du lieu lich su",
+                        )
                 except Exception as e:
                     self.logger.error(f"✗ Lỗi khi extract {symbol.upper()}: {str(e)}")
                     result[symbol] = pd.DataFrame()
+                    # Gửi cảnh báo lỗi
+                    self.discord_alert.alert_data_fetch_error(
+                        f"Historical Extract - {symbol.upper()}", str(e)
+                    )
 
         self.logger.info(f"\n{'='*60}")
         self.logger.info(f"Hoàn thành extract toàn bộ symbols")
