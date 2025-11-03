@@ -17,7 +17,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config.logger_config import LoggerConfig
 from src.realtime_extract import RealtimeExtract
 from src.realtime_load import RealtimeLoad
-from src.discord_alert_util import DiscordAlertUtil
 
 
 class RealtimePipeline:
@@ -31,7 +30,6 @@ class RealtimePipeline:
         self.extractor = RealtimeExtract()
         self.loader = RealtimeLoad()
         self.logger = LoggerConfig.logger_config("Realtime Pipeline")
-        self.discord_alert = DiscordAlertUtil()
         self.loop_interval = loop_interval
         self.is_running = False
 
@@ -50,22 +48,10 @@ class RealtimePipeline:
             total_records = sum(len(df) for df in data_map.values() if not df.empty)
             self.logger.info(f"\nHOÀN THÀNH - Tổng cộng: {total_records} bản ghi mới")
 
-            # Kiểm tra và gửi cảnh báo nếu không có data
-            if total_records == 0:
-                # Không có data mới - kiểm tra xem đã quá 15 phút chưa
-                self.discord_alert.check_and_alert_realtime_no_data(
-                    "Realtime Extract", has_new_data=False
-                )
-            else:
-                # Có data mới - cập nhật thời gian thành công
-                self.discord_alert.update_last_successful_data_time("Realtime Extract")
-
             return True
 
         except Exception as e:
             self.logger.error(f"Lỗi trong pipeline: {str(e)}")
-            # Gửi cảnh báo lỗi
-            self.discord_alert.alert_data_fetch_error("Realtime Pipeline", str(e))
             return False
 
     def run(self, continuous: bool = False):

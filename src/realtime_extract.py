@@ -23,6 +23,7 @@ from config.logger_config import LoggerConfig
 from config.mongo_config import MongoConfig
 from config.variable_config import EXTRACT_DATA_CONFIG
 from src.convert_datetime_util import ConvertDatetime
+from src.discord_alert_util import DiscordAlertUtil
 
 
 class RealtimeExtract:
@@ -38,8 +39,9 @@ class RealtimeExtract:
         self.symbols = self.config.get("symbols", ["eth"])
         self.cmc_symbol_ids = self.config.get("cmc_symbol_ids", {})
         self.converter = ConvertDatetime()
+        self.discord_alert = DiscordAlertUtil()
 
-        # Ket noi MongoDB de kiem tra data
+        # Kết nối MongoDB để kiểm tra data
         self.mongo_config = MongoConfig()
         self.mongo_client = self.mongo_config.get_client()
         self.db = self.mongo_client.get_database(self.config.get("database", "cmc_db"))
@@ -47,7 +49,7 @@ class RealtimeExtract:
             self.config.get("historical_collection", "cmc")
         )
 
-        # Delay giua requests
+        # Delay giữa requests
         self.request_delay = 0.5
 
         # API giới hạn 399 bản ghi, tương đương khoảng 4 ngày với interval 15m
@@ -99,7 +101,7 @@ class RealtimeExtract:
 
         for symbol in self.symbols:
             symbol_lower = symbol.lower()
-            self.logger.info(f"\nXu ly: {symbol_lower.upper()}")
+            self.logger.info(f"\nXử lý: {symbol_lower.upper()}")
 
             try:
                 df = self.extract_symbol(symbol_lower)
@@ -107,65 +109,74 @@ class RealtimeExtract:
 
                 if not df.empty:
                     self.logger.info(
-                        f"{symbol_lower.upper()}: Lay duoc {len(df)} ban ghi moi"
+                        f"{symbol_lower.upper()}: Lấy được {len(df)} bản ghi mới"
                     )
                 else:
                     self.logger.info(
-                        f"{symbol_lower.upper()}: Khong co du lieu moi (da cap nhat)"
+                        f"{symbol_lower.upper()}: Không có dữ liệu mới (đã cập nhật)"
+                    )
+                    # Gửi cảnh báo Discord khi không có data
+                    self.discord_alert.alert_no_data_from_source(
+                        f"Realtime Extract - {symbol_lower.upper()}",
+                        "Không có dữ liệu mới để cập nhật",
                     )
 
             except Exception as e:
-                self.logger.error(f"Loi khi extract {symbol_lower.upper()}: {str(e)}")
+                self.logger.error(f"Lỗi khi extract {symbol_lower.upper()}: {str(e)}")
                 result[symbol_lower] = pd.DataFrame()
+                # Gửi cảnh báo lỗi
+                self.discord_alert.alert_data_fetch_error(
+                    f"Realtime Extract - {symbol_lower.upper()}", str(e)
+                )
 
-            # Delay giua cac symbol
+            # Delay giữa các symbol
             if symbol != self.symbols[-1]:
                 time.sleep(self.request_delay)
 
-        self.logger.info("\nHOAN THANH REALTIME EXTRACT")
+        self.logger.info("\nHOÀN THÀNH REALTIME EXTRACT")
 
         return result
 
     def extract_symbol(self, symbol: str) -> pd.DataFrame:
-        """Extract du lieu realtime cho mot symbol.
+        """Extract dữ liệu realtime cho một symbol.
 
         Args:
-            symbol: Ten symbol
+            symbol: Tên symbol
 
         Returns:
-            DataFrame chua du lieu moi
+            DataFrame chứa dữ liệu mới
         """
-        # Lay CMC ID
+        # Lấy CMC ID
         cmc_id = self.cmc_symbol_ids.get(symbol.lower())
         if not cmc_id:
-            self.logger.error(f"Khong tim thay CMC ID cho symbol: {symbol}")
+            self.logger.error(f"Không tìm thấy CMC ID cho symbol: {symbol}")
             return pd.DataFrame()
 
-        # Lay thoi diem moi nhat trong DB
+        # Lấy thời điểm mới nhất trong DB
         latest_dt = self.get_latest_datetime_in_db(symbol)
 
-        # Tinh toan khoang thoi gian can lay
+        # Tính toán khoảng thời gian cần lấy
         time_end = datetime.now()
 
         if latest_dt:
-            # Bat dau tu sau ban ghi moi nhat (them 15 phut de tranh trung)
+            # Bắt đầu từ sau bản ghi mới nhất (thêm 15 phút để tránh trùng)
             time_start = latest_dt + timedelta(minutes=15)
 
-            # Kiem tra xem co can lay du lieu khong
+            # Kiểm tra xem có cần lấy dữ liệu không
             time_diff = (time_end - time_start).total_seconds()
 
-            if time_diff < 900:  # < 15 phut
-                self.logger.info(f"Du lieu da cap nhat (chenh lech < 15 phut)")
+            if time_diff < 900:  # < 15 phút
+                self.logger.info(f"Dữ liệu đã cập nhật (chênh lệch < 15 phút)")
                 return pd.DataFrame()
 
-            self.logger.info(f"Khoang trong can bu: {time_diff / 3600:.2f} gio")
+            self.logger.info(f"Khoảng trống cần bù: {time_diff / 3600:.2f} giờ")
 
         else:
-            # Neu chua co du lieu, lay 7 ngay gan nhat
+            # Nếu chưa có dữ liệu, lấy 7 ngày gần nhất
             time_start = time_end - timedelta(days=7)
-            self.logger.info("Chua co du lieu trong DB, lay 7 ngay gan nhat")
+            self.logger.info("Chưa có dữ liệu trong DB, lấy 7 ngày gần nhất")
 
-        # Neu khoang thoi gian > max_batch_seconds, chia nho ra
+        # Nếu khoảng thời gian > max_batch_seconds, chia nhỏ ra
         all_data = []
         current_end = time_end
 
@@ -174,7 +185,7 @@ class RealtimeExtract:
                 time_start, current_end - timedelta(seconds=self.max_batch_seconds)
             )
 
-            self.logger.info(f"Lay du lieu tu {current_start} den {current_end}")
+            self.logger.info(f"Lấy dữ liệu từ {current_start} đến {current_end}")
 
             try:
                 records = self._fetch_batch(
@@ -182,12 +193,12 @@ class RealtimeExtract:
                 )
 
                 if records:
-                    self.logger.info(f"Lay duoc: {len(records)} ban ghi")
+                    self.logger.info(f"Lấy được: {len(records)} bản ghi")
                     all_data.extend(records)
                 else:
-                    self.logger.info(f"Khong co du lieu trong batch nay")
+                    self.logger.info(f"Không có dữ liệu trong batch này")
 
-                # Lui thoi gian
+                # Lùi thời gian
                 current_end = current_start
 
                 # Delay
@@ -195,38 +206,38 @@ class RealtimeExtract:
                     time.sleep(self.request_delay)
 
             except Exception as e:
-                self.logger.error(f"Loi khi fetch batch: {str(e)}")
+                self.logger.error(f"Lỗi khi fetch batch: {str(e)}")
                 break
 
-        # Chuyen doi thanh DataFrame
+        # Chuyển đổi thành DataFrame
         if not all_data:
             return pd.DataFrame()
 
         df = self._convert_to_dataframe(all_data, symbol)
 
-        # Loai bo cac ban ghi da co trong DB (dua vao datetime)
+        # Loại bỏ các bản ghi đã có trong DB (dựa vào datetime)
         if latest_dt and not df.empty:
             latest_dt_str = latest_dt.strftime("%Y-%m-%d %H:%M:%S")
             original_len = len(df)
             df = df[df["datetime"] > latest_dt_str]
             removed = original_len - len(df)
             if removed > 0:
-                self.logger.info(f"Loai bo {removed} ban ghi trung lap")
+                self.logger.info(f"Loại bỏ {removed} bản ghi trùng lặp")
 
         return df
 
     def _fetch_batch(
         self, cmc_id: int, time_start: datetime, time_end: datetime
     ) -> List[Dict]:
-        """Goi API de lay du lieu trong mot khoang thoi gian.
+        """Gọi API để lấy dữ liệu trong một khoảng thời gian.
 
         Args:
-            cmc_id: ID cua coin tren CMC
-            time_start: Thoi diem bat dau
-            time_end: Thoi diem ket thuc
+            cmc_id: ID của coin trên CMC
+            time_start: Thời điểm bắt đầu
+            time_end: Thời điểm kết thúc
 
         Returns:
-            List cac ban ghi dang dict
+            List các bản ghi dạng dict
         """
         # Chuyển datetime sang Unix timestamp
         ts_start = int(time_start.timestamp())
@@ -255,26 +266,26 @@ class RealtimeExtract:
         return quotes
 
     def _convert_to_dataframe(self, records: List[Dict], symbol: str) -> pd.DataFrame:
-        """Chuyen doi list cac ban ghi thanh DataFrame.
+        """Chuyển đổi list các bản ghi thành DataFrame.
 
         Args:
-            records: List cac quote tu API
-            symbol: Ten symbol
+            records: List các quote từ API
+            symbol: Tên symbol
 
         Returns:
-            DataFrame da duoc chuan hoa
+            DataFrame đã được chuẩn hóa
         """
         rows = []
 
         for quote in records:
             try:
-                # Lay thong tin tu quote
+                # Lấy thông tin từ quote
                 time_open = quote.get("timeOpen")
                 time_close = quote.get("timeClose")
                 time_high = quote.get("timeHigh")
                 time_low = quote.get("timeLow")
 
-                # Lay thong tin gia
+                # Lấy thông tin giá
                 quote_data = quote.get("quote", {})
 
                 row = {
@@ -295,16 +306,16 @@ class RealtimeExtract:
                 rows.append(row)
 
             except Exception as e:
-                self.logger.warning(f"Loi khi parse quote: {str(e)}")
+                self.logger.warning(f"Lỗi khi parse quote: {str(e)}")
                 continue
 
         df = pd.DataFrame(rows)
 
-        # Sap xep theo thoi gian (tang dan)
+        # Sắp xếp theo thời gian (tăng dần)
         if not df.empty and "datetime" in df.columns:
             df = df.sort_values("datetime").reset_index(drop=True)
 
-        # Loai bo duplicate neu co
+        # Loại bỏ duplicate nếu có
         if not df.empty:
             df = df.drop_duplicates(subset=["symbol", "datetime"], keep="first")
 
