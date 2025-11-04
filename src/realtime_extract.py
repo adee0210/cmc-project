@@ -104,7 +104,7 @@ class RealtimeExtract:
             self.logger.info(f"\nXử lý: {symbol_lower.upper()}")
 
             try:
-                df = self.extract_symbol(symbol_lower)
+                df, is_already_updated = self.extract_symbol(symbol_lower)
                 result[symbol_lower] = df
 
                 if not df.empty:
@@ -112,14 +112,20 @@ class RealtimeExtract:
                         f"{symbol_lower.upper()}: Lấy được {len(df)} bản ghi mới"
                     )
                 else:
-                    self.logger.info(
-                        f"{symbol_lower.upper()}: Không có dữ liệu mới (đã cập nhật)"
-                    )
-                    # Gửi cảnh báo Discord khi không có data
-                    self.discord_alert.alert_no_data_from_source(
-                        f"Realtime Extract - {symbol_lower.upper()}",
-                        "Không có dữ liệu mới để cập nhật",
-                    )
+                    if is_already_updated:
+                        # Data đã cập nhật - không cần cảnh báo
+                        self.logger.info(
+                            f"{symbol_lower.upper()}: Không có dữ liệu mới (đã cập nhật)"
+                        )
+                    else:
+                        # Không có data từ API - cần cảnh báo
+                        self.logger.warning(
+                            f"{symbol_lower.upper()}: Không lấy được dữ liệu từ API"
+                        )
+                        self.discord_alert.alert_no_data_from_source(
+                            f"Realtime Extract - {symbol_lower.upper()}",
+                            "Không lấy được dữ liệu từ API",
+                        )
 
             except Exception as e:
                 self.logger.error(f"Lỗi khi extract {symbol_lower.upper()}: {str(e)}")
@@ -137,39 +143,47 @@ class RealtimeExtract:
 
         return result
 
-    def extract_symbol(self, symbol: str) -> pd.DataFrame:
+    def extract_symbol(self, symbol: str) -> tuple[pd.DataFrame, bool]:
         """Extract dữ liệu realtime cho một symbol.
 
         Args:
             symbol: Tên symbol
 
         Returns:
-            DataFrame chứa dữ liệu mới
+            Tuple(DataFrame chứa dữ liệu mới, is_already_updated flag)
+            - DataFrame: Dữ liệu mới từ API
+            - bool: True nếu data đã cập nhật (không cần lấy thêm), False nếu có lỗi hoặc không có data từ API
         """
         # Lấy CMC ID
         cmc_id = self.cmc_symbol_ids.get(symbol.lower())
         if not cmc_id:
             self.logger.error(f"Không tìm thấy CMC ID cho symbol: {symbol}")
-            return pd.DataFrame()
+            return pd.DataFrame(), False
 
         # Lấy thời điểm mới nhất trong DB
         latest_dt = self.get_latest_datetime_in_db(symbol)
 
-        # Tính toán khoảng thời gian cần lấy
-        time_end = datetime.now()
+        # Tính toán thời điểm kết thúc: làm tròn XUỐNG đến mốc 15 phút gần nhất ĐÃ HOÀN THÀNH
+        # Ví dụ: 11:30 -> lấy đến 11:15, 11:20 -> lấy đến 11:15, 11:45 -> lấy đến 11:30
+        now = datetime.now()
+        # Làm tròn xuống đến mốc 15 phút (00, 15, 30, 45)
+        minutes = (now.minute // 15) * 15
+        time_end = now.replace(minute=minutes, second=0, microsecond=0)
+        
+        self.logger.info(f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"Lấy dữ liệu đến mốc: {time_end.strftime('%Y-%m-%d %H:%M:%S')}")
 
         if latest_dt:
             # Bắt đầu từ sau bản ghi mới nhất (thêm 15 phút để tránh trùng)
             time_start = latest_dt + timedelta(minutes=15)
 
             # Kiểm tra xem có cần lấy dữ liệu không
+            if time_start >= time_end:
+                self.logger.info(f"Dữ liệu đã cập nhật (DB mới nhất: {latest_dt.strftime('%Y-%m-%d %H:%M:%S')})")
+                return pd.DataFrame(), True  # True = đã cập nhật, không cần cảnh báo
+
             time_diff = (time_end - time_start).total_seconds()
-
-            if time_diff < 900:  # < 15 phút
-                self.logger.info(f"Dữ liệu đã cập nhật (chênh lệch < 15 phút)")
-                return pd.DataFrame()
-
-            self.logger.info(f"Khoảng trống cần bù: {time_diff / 3600:.2f} giờ")
+            self.logger.info(f"Khoảng trống cần bù: {time_diff / 3600:.2f} giờ (từ {time_start.strftime('%H:%M')} đến {time_end.strftime('%H:%M')})")
 
         else:
             # Nếu chưa có dữ liệu, lấy 7 ngày gần nhất
@@ -211,7 +225,7 @@ class RealtimeExtract:
 
         # Chuyển đổi thành DataFrame
         if not all_data:
-            return pd.DataFrame()
+            return pd.DataFrame(), False  # False = không có data từ API, cần cảnh báo
 
         df = self._convert_to_dataframe(all_data, symbol)
 
@@ -224,7 +238,12 @@ class RealtimeExtract:
             if removed > 0:
                 self.logger.info(f"Loại bỏ {removed} bản ghi trùng lặp")
 
-        return df
+        # Nếu sau khi loại bỏ trùng lặp mà không còn data, có thể là do all_data rỗng hoặc tất cả đều trùng
+        if df.empty and all_data:
+            # Có data từ API nhưng tất cả đều trùng -> đã cập nhật
+            return df, True
+        
+        return df, False  # False = có thể có hoặc không có data, nhưng nếu empty thì cần cảnh báo
 
     def _fetch_batch(
         self, cmc_id: int, time_start: datetime, time_end: datetime

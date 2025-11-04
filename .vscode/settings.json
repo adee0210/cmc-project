@@ -3,5 +3,6 @@
     "python.analysis.extraPaths": [
         "${workspaceFolder}"
     ],
-    "python.analysis.diagnosticMode": "workspace"
+    "python.analysis.diagnosticMode": "workspace",
+    "postman.settings.dotenv-detection-notification-visibility": false
 }
