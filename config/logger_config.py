@@ -9,9 +9,11 @@ class LoggerConfig:
     def logger_config(
         log_name: str, log_file: str = "cmc_project.log", log_level: int = logging.INFO
     ):
-        root_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        # Lấy thư mục gốc của project (cmc-project/)
+        # __file__ = /home/duc_le/cmc-project/config/logger_config.py
+        # dirname(__file__) = /home/duc_le/cmc-project/config
+        # dirname(dirname(__file__)) = /home/duc_le/cmc-project
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         base_path = os.path.join(root_dir, log_file)
 
         # formatter

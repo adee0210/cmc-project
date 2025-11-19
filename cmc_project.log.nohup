@@ -1,0 +1,156 @@
+
+
+======================================================================
+KIỂM TRA DỮ LIỆU LỊCH SỬ
+======================================================================
+Tổng số documents trong DB: 1081224
+
+Thống kê theo symbol:
+  ETH: 360156 bản ghi
+  BNB: 291505 bản ghi
+  XRP: 429563 bản ghi
+
+=> Đã có dữ liệu lịch sử cho tất cả symbols
+=> BỎ QUA bước Historical Pipeline
+
+======================================================================
+
+
+BUỚC 2: Chạy Realtime Pipeline - Chế độ LIÊN TỤC
+Interval: 900 giây (15.0 phút)
+2025-11-19 16:04:30,366 - MainProcess - INFO - Discord Alert - Discord alerts are enabled
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Extract CMC - Khởi tạo Realtime Extract với symbols: ['eth', 'bnb', 'xrp']
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Load CMC - Kết nối MongoDB cho thao tác realtime load thành công
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Pipeline - 
+REALTIME PIPELINE - CHẾ ĐỘ LIÊN TỤC
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Pipeline - Interval: 900 giây (15.0 phút)
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Pipeline - Nhấn Ctrl+C để dừng
+
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Pipeline - 
+VÒNG LẶP #1 - 2025-11-19 16:04:30
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Pipeline - 
+REALTIME PIPELINE - BẮT ĐẦU
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Extract CMC - 
+BẮT ĐẦU REALTIME EXTRACT
+2025-11-19 16:04:30,366 - MainProcess - INFO - Realtime Extract CMC - 
+Xử lý: ETH
+2025-11-19 16:04:30,368 - MainProcess - INFO - Realtime Extract CMC - Symbol ETH: Dữ liệu mới nhất trong DB: 2025-11-19 08:45:00
+2025-11-19 16:04:30,368 - MainProcess - INFO - Realtime Extract CMC - Thời điểm hiện tại: 2025-11-19 16:04:30
+2025-11-19 16:04:30,368 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu đến mốc: 2025-11-19 16:00:00
+2025-11-19 16:04:30,368 - MainProcess - INFO - Realtime Extract CMC - Khoảng trống cần bù: 7.00 giờ (từ 09:00 đến 16:00)
+2025-11-19 16:04:30,368 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu từ 2025-11-19 09:00:00 đến 2025-11-19 16:00:00
+2025-11-19 16:04:31,201 - MainProcess - INFO - Realtime Extract CMC - Lấy được: 399 bản ghi
+2025-11-19 16:04:31,229 - MainProcess - INFO - Realtime Extract CMC - Loại bỏ 398 bản ghi trùng lặp
+2025-11-19 16:04:31,229 - MainProcess - INFO - Realtime Extract CMC - ETH: Lấy được 1 bản ghi mới
+2025-11-19 16:04:31,730 - MainProcess - INFO - Realtime Extract CMC - 
+Xử lý: BNB
+2025-11-19 16:04:31,733 - MainProcess - INFO - Realtime Extract CMC - Symbol BNB: Dữ liệu mới nhất trong DB: 2025-11-19 08:45:00
+2025-11-19 16:04:31,733 - MainProcess - INFO - Realtime Extract CMC - Thời điểm hiện tại: 2025-11-19 16:04:31
+2025-11-19 16:04:31,734 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu đến mốc: 2025-11-19 16:00:00
+2025-11-19 16:04:31,734 - MainProcess - INFO - Realtime Extract CMC - Khoảng trống cần bù: 7.00 giờ (từ 09:00 đến 16:00)
+2025-11-19 16:04:31,734 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu từ 2025-11-19 09:00:00 đến 2025-11-19 16:00:00
+2025-11-19 16:04:32,318 - MainProcess - INFO - Realtime Extract CMC - Lấy được: 399 bản ghi
+2025-11-19 16:04:32,339 - MainProcess - INFO - Realtime Extract CMC - Loại bỏ 398 bản ghi trùng lặp
+2025-11-19 16:04:32,340 - MainProcess - INFO - Realtime Extract CMC - BNB: Lấy được 1 bản ghi mới
+2025-11-19 16:04:32,840 - MainProcess - INFO - Realtime Extract CMC - 
+Xử lý: XRP
+2025-11-19 16:04:32,842 - MainProcess - INFO - Realtime Extract CMC - Symbol XRP: Dữ liệu mới nhất trong DB: 2025-11-19 08:45:00
+2025-11-19 16:04:32,842 - MainProcess - INFO - Realtime Extract CMC - Thời điểm hiện tại: 2025-11-19 16:04:32
+2025-11-19 16:04:32,842 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu đến mốc: 2025-11-19 16:00:00
+2025-11-19 16:04:32,842 - MainProcess - INFO - Realtime Extract CMC - Khoảng trống cần bù: 7.00 giờ (từ 09:00 đến 16:00)
+2025-11-19 16:04:32,843 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu từ 2025-11-19 09:00:00 đến 2025-11-19 16:00:00
+2025-11-19 16:04:33,434 - MainProcess - INFO - Realtime Extract CMC - Lấy được: 399 bản ghi
+2025-11-19 16:04:33,457 - MainProcess - INFO - Realtime Extract CMC - Loại bỏ 398 bản ghi trùng lặp
+2025-11-19 16:04:33,457 - MainProcess - INFO - Realtime Extract CMC - XRP: Lấy được 1 bản ghi mới
+2025-11-19 16:04:33,457 - MainProcess - INFO - Realtime Extract CMC - 
+HOÀN THÀNH REALTIME EXTRACT
+2025-11-19 16:04:33,457 - MainProcess - INFO - Realtime Load CMC - Bắt đầu load DataFrame cho eth
+2025-11-19 16:04:33,459 - MainProcess - INFO - Realtime Load CMC - Batch 1 đã xử lý: 1 bản ghi
+2025-11-19 16:04:33,459 - MainProcess - INFO - Realtime Load CMC - Hoàn thành load - Inserted: 1, Duplicate: 0, Tổng batch: 1
+2025-11-19 16:04:33,459 - MainProcess - INFO - Realtime Load CMC - Bắt đầu load DataFrame cho bnb
+2025-11-19 16:04:33,461 - MainProcess - INFO - Realtime Load CMC - Batch 1 đã xử lý: 1 bản ghi
+2025-11-19 16:04:33,461 - MainProcess - INFO - Realtime Load CMC - Hoàn thành load - Inserted: 1, Duplicate: 0, Tổng batch: 1
+2025-11-19 16:04:33,461 - MainProcess - INFO - Realtime Load CMC - Bắt đầu load DataFrame cho xrp
+2025-11-19 16:04:33,462 - MainProcess - INFO - Realtime Load CMC - Batch 1 đã xử lý: 1 bản ghi
+2025-11-19 16:04:33,462 - MainProcess - INFO - Realtime Load CMC - Hoàn thành load - Inserted: 1, Duplicate: 0, Tổng batch: 1
+2025-11-19 16:04:33,462 - MainProcess - INFO - Realtime Pipeline - 
+HOÀN THÀNH - Tổng cộng: 3 bản ghi mới
+2025-11-19 16:04:33,462 - MainProcess - INFO - Realtime Pipeline - 
+Lần chạy tiếp theo: 2025-11-19 16:15:00
+2025-11-19 16:04:33,462 - MainProcess - INFO - Realtime Pipeline - Nghỉ 626 giây (10.4 phút)
+
+
+
+======================================================================
+KIỂM TRA DỮ LIỆU LỊCH SỬ
+======================================================================
+Tổng số documents trong DB: 1081227
+
+Thống kê theo symbol:
+  ETH: 360157 bản ghi
+  BNB: 291506 bản ghi
+  XRP: 429564 bản ghi
+
+=> Đã có dữ liệu lịch sử cho tất cả symbols
+=> BỎ QUA bước Historical Pipeline
+
+======================================================================
+
+
+BUỚC 2: Chạy Realtime Pipeline - Chế độ LIÊN TỤC
+Interval: 900 giây (15.0 phút)
+2025-11-19 16:05:51,529 - MainProcess - INFO - Discord Alert - Discord alerts are enabled
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Extract CMC - Khởi tạo Realtime Extract với symbols: ['eth', 'bnb', 'xrp']
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Load CMC - Kết nối MongoDB cho thao tác realtime load thành công
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Pipeline - 
+REALTIME PIPELINE - CHẾ ĐỘ LIÊN TỤC
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Pipeline - Interval: 900 giây (15.0 phút)
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Pipeline - Nhấn Ctrl+C để dừng
+
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Pipeline - 
+VÒNG LẶP #1 - 2025-11-19 16:05:51
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Pipeline - 
+REALTIME PIPELINE - BẮT ĐẦU
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Extract CMC - 
+BẮT ĐẦU REALTIME EXTRACT
+2025-11-19 16:05:51,529 - MainProcess - INFO - Realtime Extract CMC - 
+Xử lý: ETH
+2025-11-19 16:05:51,531 - MainProcess - INFO - Realtime Extract CMC - Symbol ETH: Dữ liệu mới nhất trong DB: 2025-11-19 09:00:00
+2025-11-19 16:05:51,531 - MainProcess - INFO - Realtime Extract CMC - Thời điểm hiện tại: 2025-11-19 16:05:51
+2025-11-19 16:05:51,531 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu đến mốc: 2025-11-19 16:00:00
+2025-11-19 16:05:51,531 - MainProcess - INFO - Realtime Extract CMC - Khoảng trống cần bù: 6.75 giờ (từ 09:15 đến 16:00)
+2025-11-19 16:05:51,531 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu từ 2025-11-19 09:15:00 đến 2025-11-19 16:00:00
+2025-11-19 16:05:52,214 - MainProcess - INFO - Realtime Extract CMC - Lấy được: 399 bản ghi
+2025-11-19 16:05:52,245 - MainProcess - INFO - Realtime Extract CMC - Loại bỏ 399 bản ghi trùng lặp
+2025-11-19 16:05:52,245 - MainProcess - INFO - Realtime Extract CMC - ETH: Không có dữ liệu mới (đã cập nhật)
+2025-11-19 16:05:52,746 - MainProcess - INFO - Realtime Extract CMC - 
+Xử lý: BNB
+2025-11-19 16:05:52,747 - MainProcess - INFO - Realtime Extract CMC - Symbol BNB: Dữ liệu mới nhất trong DB: 2025-11-19 09:00:00
+2025-11-19 16:05:52,748 - MainProcess - INFO - Realtime Extract CMC - Thời điểm hiện tại: 2025-11-19 16:05:52
+2025-11-19 16:05:52,748 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu đến mốc: 2025-11-19 16:00:00
+2025-11-19 16:05:52,748 - MainProcess - INFO - Realtime Extract CMC - Khoảng trống cần bù: 6.75 giờ (từ 09:15 đến 16:00)
+2025-11-19 16:05:52,748 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu từ 2025-11-19 09:15:00 đến 2025-11-19 16:00:00
+2025-11-19 16:05:53,418 - MainProcess - INFO - Realtime Extract CMC - Lấy được: 399 bản ghi
+2025-11-19 16:05:53,440 - MainProcess - INFO - Realtime Extract CMC - Loại bỏ 399 bản ghi trùng lặp
+2025-11-19 16:05:53,440 - MainProcess - INFO - Realtime Extract CMC - BNB: Không có dữ liệu mới (đã cập nhật)
+2025-11-19 16:05:53,941 - MainProcess - INFO - Realtime Extract CMC - 
+Xử lý: XRP
+2025-11-19 16:05:53,944 - MainProcess - INFO - Realtime Extract CMC - Symbol XRP: Dữ liệu mới nhất trong DB: 2025-11-19 09:00:00
+2025-11-19 16:05:53,944 - MainProcess - INFO - Realtime Extract CMC - Thời điểm hiện tại: 2025-11-19 16:05:53
+2025-11-19 16:05:53,945 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu đến mốc: 2025-11-19 16:00:00
+2025-11-19 16:05:53,945 - MainProcess - INFO - Realtime Extract CMC - Khoảng trống cần bù: 6.75 giờ (từ 09:15 đến 16:00)
+2025-11-19 16:05:53,945 - MainProcess - INFO - Realtime Extract CMC - Lấy dữ liệu từ 2025-11-19 09:15:00 đến 2025-11-19 16:00:00
+2025-11-19 16:05:54,561 - MainProcess - INFO - Realtime Extract CMC - Lấy được: 399 bản ghi
+2025-11-19 16:05:54,614 - MainProcess - INFO - Realtime Extract CMC - Loại bỏ 399 bản ghi trùng lặp
+2025-11-19 16:05:54,614 - MainProcess - INFO - Realtime Extract CMC - XRP: Không có dữ liệu mới (đã cập nhật)
+2025-11-19 16:05:54,614 - MainProcess - INFO - Realtime Extract CMC - 
+HOÀN THÀNH REALTIME EXTRACT
+2025-11-19 16:05:54,614 - MainProcess - INFO - Realtime Load CMC - Không có dữ liệu để load cho eth
+2025-11-19 16:05:54,615 - MainProcess - INFO - Realtime Load CMC - Không có dữ liệu để load cho bnb
+2025-11-19 16:05:54,615 - MainProcess - INFO - Realtime Load CMC - Không có dữ liệu để load cho xrp
+2025-11-19 16:05:54,615 - MainProcess - INFO - Realtime Pipeline - 
+HOÀN THÀNH - Tổng cộng: 0 bản ghi mới
+2025-11-19 16:05:54,615 - MainProcess - INFO - Realtime Pipeline - 
+Lần chạy tiếp theo: 2025-11-19 16:15:00
+2025-11-19 16:05:54,615 - MainProcess - INFO - Realtime Pipeline - Nghỉ 545 giây (9.1 phút)
+

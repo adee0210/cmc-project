@@ -67,22 +67,28 @@ start() {
     echo "Khởi động CMC Project..."
     echo "  - Chạy Historical Pipeline (lần đầu)"
     echo "  - Sau đó chạy Realtime Pipeline (liên tục mỗi 15 phút)"
-    # Chạy Python với nohup nhưng không redirect output
+    # Chạy Python với nohup, unbuffer để log ghi ngay lập tức
+    # PYTHONUNBUFFERED=1 để Python không buffer output
     # Python logger (RotatingFileHandler) sẽ tự động quản lý log rotation
-    # Redirect nohup.out sang /dev/null để tránh tạo file nohup.out
+    # Redirect stdout/stderr sang nohup.out để không mất log khi có lỗi
     if command -v nohup >/dev/null 2>&1; then
-        nohup $PYTHON_CMD > /dev/null 2>&1 &
+        PYTHONUNBUFFERED=1 nohup $PYTHON_CMD >> "$LOG_FILE.nohup" 2>&1 &
     else
-        $PYTHON_CMD > /dev/null 2>&1 &
+        PYTHONUNBUFFERED=1 $PYTHON_CMD >> "$LOG_FILE.nohup" 2>&1 &
     fi
     echo $! > "$PID_FILE"
     echo "CMC Project đã khởi động (PID: $(cat "$PID_FILE"))"
-    echo "Log file: $LOG_FILE"
-    echo "  - Main log: $LOG_FILE"
-    echo "  - Backup logs: ${LOG_FILE}.1, ${LOG_FILE}.2, ... (tự động xoay vòng khi đạt 10MB)"
+    echo ""
+    echo "Log files:"
+    echo "  - Application log: $LOG_FILE (tự động xoay vòng khi đạt 10MB)"
+    echo "  - Backup logs: ${LOG_FILE}.1, ${LOG_FILE}.2, ... ${LOG_FILE}.5"
+    echo "  - Nohup output: ${LOG_FILE}.nohup (stdout/stderr của process)"
     echo ""
     echo "Xem log realtime:"
     echo "  tail -f $LOG_FILE"
+    echo ""
+    echo "Xem tất cả output:"
+    echo "  tail -f $LOG_FILE ${LOG_FILE}.nohup"
 }
 
 stop() {
