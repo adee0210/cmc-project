@@ -67,15 +67,19 @@ start() {
     echo "Khởi động CMC Project..."
     echo "  - Chạy Historical Pipeline (lần đầu)"
     echo "  - Sau đó chạy Realtime Pipeline (liên tục mỗi 15 phút)"
-    # Dùng nohup nếu có, fallback chạy bình thường
+    # Chạy Python với nohup nhưng không redirect output
+    # Python logger (RotatingFileHandler) sẽ tự động quản lý log rotation
+    # Redirect nohup.out sang /dev/null để tránh tạo file nohup.out
     if command -v nohup >/dev/null 2>&1; then
-        nohup $PYTHON_CMD > "$LOG_FILE" 2>&1 &
+        nohup $PYTHON_CMD > /dev/null 2>&1 &
     else
-        $PYTHON_CMD > "$LOG_FILE" 2>&1 &
+        $PYTHON_CMD > /dev/null 2>&1 &
     fi
     echo $! > "$PID_FILE"
     echo "CMC Project đã khởi động (PID: $(cat "$PID_FILE"))"
     echo "Log file: $LOG_FILE"
+    echo "  - Main log: $LOG_FILE"
+    echo "  - Backup logs: ${LOG_FILE}.1, ${LOG_FILE}.2, ... (tự động xoay vòng khi đạt 10MB)"
     echo ""
     echo "Xem log realtime:"
     echo "  tail -f $LOG_FILE"
@@ -115,10 +119,18 @@ status() {
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
             echo "CMC Project đang chạy (PID: $PID)"
-            echo "Log file: $LOG_FILE"
+            echo ""
+            echo "Log files:"
+            echo "  Main log: $LOG_FILE"
+            if [ -f "${LOG_FILE}.1" ]; then
+                echo "  Backup logs: ${LOG_FILE}.1, ${LOG_FILE}.2, ... (tự động xoay vòng)"
+            fi
             echo ""
             echo "Xem log realtime:"
             echo "  tail -f $LOG_FILE"
+            echo ""
+            echo "Xem tất cả logs (bao gồm backup):"
+            echo "  tail -f $LOG_FILE ${LOG_FILE}.*"
         else
             echo "File PID tồn tại nhưng tiến trình không chạy"
         fi
@@ -149,7 +161,12 @@ case "$1" in
         echo "  start     - Khởi động service (historical + realtime liên tục)"
         echo "  stop      - Dừng service"
         echo "  restart   - Khởi động lại service"
-        echo "  status    - Kiểm tra trạng thái"
+        echo "  status    - Kiểm tra trạng thái và log files"
+        echo ""
+        echo "Log Management:"
+        echo "  - Logs tự động xoay vòng khi đạt 10MB"
+        echo "  - Giữ 5 file backup (cmc_project.log.1 đến .5)"
+        echo "  - Tổng dung lượng tối đa: ~60MB"
         echo ""
         echo "Workflow:"
         echo "  1. Chạy Historical Pipeline - Lấy toàn bộ lịch sử (chạy 1 lần)"

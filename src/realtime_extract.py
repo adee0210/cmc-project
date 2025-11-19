@@ -143,7 +143,7 @@ class RealtimeExtract:
 
         return result
 
-    def extract_symbol(self, symbol: str) -> tuple[pd.DataFrame, bool]:
+    def extract_symbol(self, symbol: str):
         """Extract dữ liệu realtime cho một symbol.
 
         Args:
@@ -169,9 +169,11 @@ class RealtimeExtract:
         # Làm tròn xuống đến mốc 15 phút (00, 15, 30, 45)
         minutes = (now.minute // 15) * 15
         time_end = now.replace(minute=minutes, second=0, microsecond=0)
-        
+
         self.logger.info(f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')}")
-        self.logger.info(f"Lấy dữ liệu đến mốc: {time_end.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(
+            f"Lấy dữ liệu đến mốc: {time_end.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
 
         if latest_dt:
             # Bắt đầu từ sau bản ghi mới nhất (thêm 15 phút để tránh trùng)
@@ -179,11 +181,15 @@ class RealtimeExtract:
 
             # Kiểm tra xem có cần lấy dữ liệu không
             if time_start >= time_end:
-                self.logger.info(f"Dữ liệu đã cập nhật (DB mới nhất: {latest_dt.strftime('%Y-%m-%d %H:%M:%S')})")
+                self.logger.info(
+                    f"Dữ liệu đã cập nhật (DB mới nhất: {latest_dt.strftime('%Y-%m-%d %H:%M:%S')})"
+                )
                 return pd.DataFrame(), True  # True = đã cập nhật, không cần cảnh báo
 
             time_diff = (time_end - time_start).total_seconds()
-            self.logger.info(f"Khoảng trống cần bù: {time_diff / 3600:.2f} giờ (từ {time_start.strftime('%H:%M')} đến {time_end.strftime('%H:%M')})")
+            self.logger.info(
+                f"Khoảng trống cần bù: {time_diff / 3600:.2f} giờ (từ {time_start.strftime('%H:%M')} đến {time_end.strftime('%H:%M')})"
+            )
 
         else:
             # Nếu chưa có dữ liệu, lấy 7 ngày gần nhất
@@ -242,8 +248,11 @@ class RealtimeExtract:
         if df.empty and all_data:
             # Có data từ API nhưng tất cả đều trùng -> đã cập nhật
             return df, True
-        
-        return df, False  # False = có thể có hoặc không có data, nhưng nếu empty thì cần cảnh báo
+
+        return (
+            df,
+            False,
+        )  # False = có thể có hoặc không có data, nhưng nếu empty thì cần cảnh báo
 
     def _fetch_batch(
         self, cmc_id: int, time_start: datetime, time_end: datetime

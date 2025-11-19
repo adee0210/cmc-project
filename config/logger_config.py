@@ -7,7 +7,7 @@ class LoggerConfig:
 
     @staticmethod
     def logger_config(
-        log_name: str, log_file: str = "main.log", log_level: int = logging.INFO
+        log_name: str, log_file: str = "cmc_project.log", log_level: int = logging.INFO
     ):
         root_dir = os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,8 +19,13 @@ class LoggerConfig:
             "%(asctime)s - %(processName)s - %(levelname)s - %(name)s - %(message)s"
         )
 
+        # RotatingFileHandler với backupCount để giữ 5 file log backup
+        # Mỗi file tối đa 10MB, tổng cộng ~60MB (6 files: 1 main + 5 backup)
         file_handler = RotatingFileHandler(
-            filename=base_path, maxBytes=10 * 1024 * 1024, encoding="utf-8"
+            filename=base_path,
+            maxBytes=10 * 1024 * 1024,  # 10MB
+            backupCount=5,  # Giữ 5 file backup (.1, .2, .3, .4, .5)
+            encoding="utf-8",
         )
         file_handler.setFormatter(formatter)
 
