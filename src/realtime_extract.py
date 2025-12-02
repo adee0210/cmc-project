@@ -163,16 +163,22 @@ class RealtimeExtract:
         # Lấy thời điểm mới nhất trong DB
         latest_dt = self.get_latest_datetime_in_db(symbol)
 
-        # Tính toán thời điểm kết thúc: làm tròn XUỐNG đến mốc 15 phút gần nhất ĐÃ HOÀN THÀNH
-        # Ví dụ: 11:30 -> lấy đến 11:15, 11:20 -> lấy đến 11:15, 11:45 -> lấy đến 11:30
+        # Tính toán thời điểm kết thúc: làm tròn XUỐNG rồi LÙI 15 PHÚT để lấy mốc ĐÃ HOÀN THÀNH
+        # API CMC cần 1-2 phút để có data cho mốc hiện tại, nên luôn lấy mốc TRƯỚC ĐÓ
+        # Ví dụ:
+        #   - 15:00:xx -> làm tròn 15:00 -> lùi 15 phút -> 14:45 (lấy data 14:45)
+        #   - 15:15:xx -> làm tròn 15:15 -> lùi 15 phút -> 15:00 (lấy data 15:00)
+        #   - 15:30:xx -> làm tròn 15:30 -> lùi 15 phút -> 15:15 (lấy data 15:15)
         now = datetime.now()
         # Làm tròn xuống đến mốc 15 phút (00, 15, 30, 45)
         minutes = (now.minute // 15) * 15
         time_end = now.replace(minute=minutes, second=0, microsecond=0)
+        # Lùi 15 phút để lấy mốc đã hoàn thành
+        time_end = time_end - timedelta(minutes=15)
 
         self.logger.info(f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')}")
         self.logger.info(
-            f"Lấy dữ liệu đến mốc: {time_end.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"Lấy dữ liệu đến mốc đã hoàn thành: {time_end.strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
         if latest_dt:
