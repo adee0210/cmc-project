@@ -80,8 +80,8 @@ start() {
     echo "CMC Project đã khởi động (PID: $(cat "$PID_FILE"))"
     echo ""
     echo "Log files:"
-    echo "  - Application log: $LOG_FILE (tự động xoay vòng khi đạt 10MB)"
-    echo "  - Backup logs: ${LOG_FILE}.1, ${LOG_FILE}.2, ... ${LOG_FILE}.5"
+    echo "  - Application log: $LOG_FILE (tự động xoay vòng mỗi ngày lúc 00:00)"
+    echo "  - Backup logs: ${LOG_FILE}.YYYY-MM-DD (giữ 7 ngày gần nhất)"
     echo "  - Nohup output: ${LOG_FILE}.nohup (stdout/stderr của process)"
     echo ""
     echo "Xem log realtime:"
@@ -128,8 +128,11 @@ status() {
             echo ""
             echo "Log files:"
             echo "  Main log: $LOG_FILE"
-            if [ -f "${LOG_FILE}.1" ]; then
-                echo "  Backup logs: ${LOG_FILE}.1, ${LOG_FILE}.2, ... (tự động xoay vòng)"
+            # Hiển thị log backups nếu có
+            backup_logs=$(ls ${LOG_FILE}.20* 2>/dev/null | head -3)
+            if [ -n "$backup_logs" ]; then
+                echo "  Backup logs (7 ngày gần nhất):"
+                ls -lh ${LOG_FILE}.20* 2>/dev/null | tail -7 | awk '{print "    " $9 " (" $5 ")"}'
             fi
             echo ""
             echo "Xem log realtime:"
@@ -170,9 +173,9 @@ case "$1" in
         echo "  status    - Kiểm tra trạng thái và log files"
         echo ""
         echo "Log Management:"
-        echo "  - Logs tự động xoay vòng khi đạt 10MB"
-        echo "  - Giữ 5 file backup (cmc_project.log.1 đến .5)"
-        echo "  - Tổng dung lượng tối đa: ~60MB"
+        echo "  - Logs tự động xoay vòng mỗi ngày lúc 00:00 (midnight)"
+        echo "  - Giữ 7 ngày log gần nhất (cmc_project.log.YYYY-MM-DD)"
+        echo "  - Log cũ hơn 7 ngày tự động bị xóa"
         echo ""
         echo "Workflow:"
         echo "  1. Chạy Historical Pipeline - Lấy toàn bộ lịch sử (chạy 1 lần)"
