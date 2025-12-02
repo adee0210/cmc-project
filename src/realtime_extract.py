@@ -163,22 +163,37 @@ class RealtimeExtract:
         # Lấy thời điểm mới nhất trong DB
         latest_dt = self.get_latest_datetime_in_db(symbol)
 
-        # Tính toán thời điểm kết thúc: làm tròn XUỐNG rồi LÙI 15 PHÚT để lấy mốc ĐÃ HOÀN THÀNH
-        # API CMC cần 1-2 phút để có data cho mốc hiện tại, nên luôn lấy mốc TRƯỚC ĐÓ
+        # Tính toán thời điểm kết thúc: làm tròn XUỐNG đến mốc 15 phút gần nhất
+        # Nhưng CHỈ lấy mốc đó nếu đã qua mốc đó ít nhất 1 phút (để API có thời gian cập nhật)
         # Ví dụ:
-        #   - 15:00:xx -> làm tròn 15:00 -> lùi 15 phút -> 14:45 (lấy data 14:45)
-        #   - 15:15:xx -> làm tròn 15:15 -> lùi 15 phút -> 15:00 (lấy data 15:00)
-        #   - 15:30:xx -> làm tròn 15:30 -> lùi 15 phút -> 15:15 (lấy data 15:15)
+        #   - 15:00:30 -> chưa đủ 1 phút sau 15:00 -> lấy 14:45
+        #   - 15:01:00 -> đã qua 15:00 được 1 phút -> lấy 15:00
+        #   - 15:15:30 -> chưa đủ 1 phút sau 15:15 -> lấy 15:00
+        #   - 15:16:00 -> đã qua 15:15 được 1 phút -> lấy 15:15
+        #   - 15:30:30 -> chưa đủ 1 phút sau 15:30 -> lấy 15:15
+        #   - 15:31:00 -> đã qua 15:30 được 1 phút -> lấy 15:30
         now = datetime.now()
         # Làm tròn xuống đến mốc 15 phút (00, 15, 30, 45)
         minutes = (now.minute // 15) * 15
         time_end = now.replace(minute=minutes, second=0, microsecond=0)
-        # Lùi 15 phút để lấy mốc đã hoàn thành
-        time_end = time_end - timedelta(minutes=15)
 
-        self.logger.info(f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        # Kiểm tra xem đã qua mốc này ít nhất 1 phút chưa
+        time_since_mark = (now - time_end).total_seconds()
+        if time_since_mark < 60:  # Chưa đủ 1 phút
+            # Lùi về mốc trước đó
+            time_end = time_end - timedelta(minutes=15)
+            self.logger.info(
+                f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"(chưa đủ 1 phút sau mốc, lùi về mốc trước)"
+            )
+        else:
+            self.logger.info(
+                f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"(đã qua mốc {int(time_since_mark)}s)"
+            )
+
         self.logger.info(
-            f"Lấy dữ liệu đến mốc đã hoàn thành: {time_end.strftime('%Y-%m-%d %H:%M:%S')}"
+            f"Lấy dữ liệu đến mốc: {time_end.strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
         if latest_dt:
