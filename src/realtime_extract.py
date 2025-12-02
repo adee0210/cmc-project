@@ -163,53 +163,29 @@ class RealtimeExtract:
         # Lấy thời điểm mới nhất trong DB
         latest_dt = self.get_latest_datetime_in_db(symbol)
 
-        # Tính toán thời điểm kết thúc: làm tròn XUỐNG đến mốc 15 phút gần nhất
-        # Nhưng CHỈ lấy mốc đó nếu đã qua mốc đó ít nhất 1 phút (để API có thời gian cập nhật)
-        # Ví dụ:
-        #   - 15:00:30 -> chưa đủ 1 phút sau 15:00 -> lấy 14:45
-        #   - 15:01:00 -> đã qua 15:00 được 1 phút -> lấy 15:00
-        #   - 15:15:30 -> chưa đủ 1 phút sau 15:15 -> lấy 15:00
-        #   - 15:16:00 -> đã qua 15:15 được 1 phút -> lấy 15:15
-        #   - 15:30:30 -> chưa đủ 1 phút sau 15:30 -> lấy 15:15
-        #   - 15:31:00 -> đã qua 15:30 được 1 phút -> lấy 15:30
+        # LOGIC ĐƠN GIẢN: Lấy từ DB_latest đến HIỆN TẠI
+        # API sẽ tự trả về data có sẵn, không cần làm tròn phức tạp
         now = datetime.now()
-        # Làm tròn xuống đến mốc 15 phút (00, 15, 30, 45)
-        minutes = (now.minute // 15) * 15
-        time_end = now.replace(minute=minutes, second=0, microsecond=0)
+        time_end = now
 
-        # Kiểm tra xem đã qua mốc này ít nhất 1 phút chưa
-        time_since_mark = (now - time_end).total_seconds()
-        if time_since_mark < 60:  # Chưa đủ 1 phút
-            # Lùi về mốc trước đó
-            time_end = time_end - timedelta(minutes=15)
-            self.logger.info(
-                f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')} "
-                f"(chưa đủ 1 phút sau mốc, lùi về mốc trước)"
-            )
-        else:
-            self.logger.info(
-                f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')} "
-                f"(đã qua mốc {int(time_since_mark)}s)"
-            )
-
-        self.logger.info(
-            f"Lấy dữ liệu đến mốc: {time_end.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+        self.logger.info(f"Thời điểm hiện tại: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"Lấy dữ liệu đến: {time_end.strftime('%Y-%m-%d %H:%M:%S')}")
 
         if latest_dt:
-            # Bắt đầu từ sau bản ghi mới nhất (thêm 15 phút để tránh trùng)
-            time_start = latest_dt + timedelta(minutes=15)
+            # Bắt đầu từ sau bản ghi mới nhất (thêm 1 phút để tránh trùng)
+            time_start = latest_dt + timedelta(minutes=1)
 
             # Kiểm tra xem có cần lấy dữ liệu không
-            if time_start >= time_end:
+            time_diff = (time_end - time_start).total_seconds()
+
+            if time_diff <= 0:
                 self.logger.info(
                     f"Dữ liệu đã cập nhật (DB mới nhất: {latest_dt.strftime('%Y-%m-%d %H:%M:%S')})"
                 )
                 return pd.DataFrame(), True  # True = đã cập nhật, không cần cảnh báo
 
-            time_diff = (time_end - time_start).total_seconds()
             self.logger.info(
-                f"Khoảng trống cần bù: {time_diff / 3600:.2f} giờ (từ {time_start.strftime('%H:%M')} đến {time_end.strftime('%H:%M')})"
+                f"Khoảng trống cần bù: {time_diff / 60:.1f} phút (từ {time_start.strftime('%Y-%m-%d %H:%M')} đến {time_end.strftime('%Y-%m-%d %H:%M')})"
             )
 
         else:
@@ -263,17 +239,22 @@ class RealtimeExtract:
             df = df[df["datetime"] > latest_dt_str]
             removed = original_len - len(df)
             if removed > 0:
-                self.logger.info(f"Loại bỏ {removed} bản ghi trùng lặp")
+                self.logger.info(
+                    f"Loại bỏ {removed} bản ghi trùng lặp (đã có trong DB)"
+                )
 
-        # Nếu sau khi loại bỏ trùng lặp mà không còn data, có thể là do all_data rỗng hoặc tất cả đều trùng
-        if df.empty and all_data:
-            # Có data từ API nhưng tất cả đều trùng -> đã cập nhật
-            return df, True
+        # Nếu sau khi loại bỏ trùng lặp mà không còn data
+        if df.empty:
+            if all_data:
+                # Có data từ API nhưng tất cả đều trùng -> đã cập nhật, không cần cảnh báo
+                self.logger.info("Tất cả dữ liệu từ API đều đã có trong DB")
+                return df, True
+            else:
+                # Không có data từ API -> cần cảnh báo
+                return df, False
 
-        return (
-            df,
-            False,
-        )  # False = có thể có hoặc không có data, nhưng nếu empty thì cần cảnh báo
+        # Có data mới
+        return df, False
 
     def _fetch_batch(
         self, cmc_id: int, time_start: datetime, time_end: datetime
@@ -301,18 +282,43 @@ class RealtimeExtract:
             interval=self.interval,
         )
 
+        self.logger.info(f"API URL: {url}")
+
         # Gọi API
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
+        try:
+            response = requests.get(url, timeout=30)
+            self.logger.info(f"API Response Status: {response.status_code}")
 
-        data = response.json()
+            response.raise_for_status()
 
-        # Parse response
-        if "data" not in data:
+            data = response.json()
+            self.logger.info(
+                f"API Response Keys: {list(data.keys()) if isinstance(data, dict) else 'Not dict'}"
+            )
+
+            # Parse response
+            if "data" not in data:
+                self.logger.warning(f"API response không có key 'data': {data}")
+                return []
+
+            quotes = data["data"].get("quotes", [])
+            self.logger.info(f"Số lượng records từ API: {len(quotes)}")
+
+            if quotes:
+                # Log sample record đầu tiên để debug
+                sample = quotes[0]
+                self.logger.info(
+                    f"Sample record: timeClose={sample.get('timeClose')}, quote={sample.get('quote', {}).get('close')}"
+                )
+
+            return quotes
+
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Lỗi HTTP khi gọi API: {str(e)}")
             return []
-
-        quotes = data["data"].get("quotes", [])
-        return quotes
+        except Exception as e:
+            self.logger.error(f"Lỗi khi parse response API: {str(e)}")
+            return []
 
     def _convert_to_dataframe(self, records: List[Dict], symbol: str) -> pd.DataFrame:
         """Chuyển đổi list các bản ghi thành DataFrame.
