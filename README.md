@@ -93,7 +93,7 @@ tail -f cmc_project.log
 python test_api_limit.py
 ```
 
-## 📊 Cấu trúc dữ liệu
+##  Cấu trúc dữ liệu
 
 Dữ liệu được lưu vào MongoDB với cấu trúc:
 
@@ -183,4 +183,5 @@ cmc_symbol_project/
 - Realtime pipeline tự động loại bỏ duplicate
 
 - MongoDB index unique trên `(symbol, datetime)`
+
 
