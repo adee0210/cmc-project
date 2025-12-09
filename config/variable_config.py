@@ -39,8 +39,3 @@ EXTRACT_DATA_CONFIG = {
         "xrp": 52,
     },
 }
-
-DISCORD_CONFIG = {
-    "webhook_url": os.getenv("DISCORD_WEBHOOK_URL", ""),
-    "enabled": os.getenv("DISCORD_ALERT_ENABLED", "false").lower() == "true",
-}

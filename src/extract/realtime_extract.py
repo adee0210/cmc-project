@@ -5,32 +5,26 @@ Logic:
 1. Kiểm tra thời điểm cuối cùng có trong DB cho mỗi symbol
 2. Lấy dữ liệu từ thời điểm đó đến hiện tại (bù khoảng trống)
 3. Tự động cập nhật dữ liệu mới nhất
+4. Chạy song song cho tất cả symbols bằng asyncio
 """
 
-import sys
-import os
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-import time
 
 import pandas as pd
 import requests
 from pymongo import DESCENDING
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from config.logger_config import LoggerConfig
 from config.mongo_config import MongoConfig
 from config.variable_config import EXTRACT_DATA_CONFIG
-from src.convert_datetime_util import ConvertDatetime
-from src.discord_alert_util import DiscordAlertUtil
+from util.convert_datetime_util import ConvertDatetime
 
 
 class RealtimeExtract:
-    """Class để extract dữ liệu realtime và bù vào khoảng trống."""
-
     def __init__(self):
-        self.logger = LoggerConfig.logger_config("Realtime Extract CMC")
+        self.logger = LoggerConfig.logger_config("Realtime Extract")
         self.config = EXTRACT_DATA_CONFIG
         self.api_config = self.config.get("api", {})
         self.url_template = self.api_config.get("url_template", "")
@@ -39,7 +33,6 @@ class RealtimeExtract:
         self.symbols = self.config.get("symbols", ["eth"])
         self.cmc_symbol_ids = self.config.get("cmc_symbol_ids", {})
         self.converter = ConvertDatetime()
-        self.discord_alert = DiscordAlertUtil()
 
         # Kết nối MongoDB để kiểm tra data
         self.mongo_config = MongoConfig()
@@ -48,9 +41,6 @@ class RealtimeExtract:
         self.collection = self.db.get_collection(
             self.config.get("historical_collection", "cmc")
         )
-
-        # Delay giữa requests
-        self.request_delay = 0.5
 
         # API giới hạn 399 bản ghi, tương đương khoảng 4 ngày với interval 15m
         self.max_records_per_request = 399
@@ -89,22 +79,27 @@ class RealtimeExtract:
             self.logger.error(f"Lỗi khi lấy datetime mới nhất cho {symbol}: {str(e)}")
             return None
 
-    def extract(self) -> Dict[str, pd.DataFrame]:
-        """Extract dữ liệu realtime cho tất cả symbols.
+    async def extract(self) -> Dict[str, pd.DataFrame]:
+        """Extract dữ liệu realtime cho tất cả symbols song song bằng asyncio.
 
         Returns:
             Dict mapping symbol -> DataFrame
         """
-        result = {}
-
         self.logger.info("\nBẮT ĐẦU REALTIME EXTRACT")
 
-        for symbol in self.symbols:
-            symbol_lower = symbol.lower()
-            self.logger.info(f"\nXử lý: {symbol_lower.upper()}")
+        # Chạy song song tất cả symbols
+        tasks = [self.extract_symbol_async(symbol.lower()) for symbol in self.symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            try:
-                df, is_already_updated = self.extract_symbol(symbol_lower)
+        # Xử lý kết quả
+        result = {}
+        for symbol, res in zip(self.symbols, results):
+            symbol_lower = symbol.lower()
+            if isinstance(res, Exception):
+                self.logger.error(f"Lỗi khi extract {symbol_lower.upper()}: {str(res)}")
+                result[symbol_lower] = pd.DataFrame()
+            else:
+                df, is_already_updated = res
                 result[symbol_lower] = df
 
                 if not df.empty:
@@ -113,35 +108,20 @@ class RealtimeExtract:
                     )
                 else:
                     if is_already_updated:
-                        # Data đã cập nhật - không cần cảnh báo
                         self.logger.info(
                             f"{symbol_lower.upper()}: Không có dữ liệu mới (đã cập nhật)"
                         )
                     else:
-                        # Không có data từ API - cần cảnh báo
                         self.logger.warning(
                             f"{symbol_lower.upper()}: Không lấy được dữ liệu từ API"
                         )
-                        self.discord_alert.alert_no_data_from_source(
-                            f"Realtime Extract - {symbol_lower.upper()}",
-                            "Không lấy được dữ liệu từ API",
-                        )
-
-            except Exception as e:
-                self.logger.error(f"Lỗi khi extract {symbol_lower.upper()}: {str(e)}")
-                result[symbol_lower] = pd.DataFrame()
-                # Gửi cảnh báo lỗi
-                self.discord_alert.alert_data_fetch_error(
-                    f"Realtime Extract - {symbol_lower.upper()}", str(e)
-                )
-
-            # Delay giữa các symbol
-            if symbol != self.symbols[-1]:
-                time.sleep(self.request_delay)
 
         self.logger.info("\nHOÀN THÀNH REALTIME EXTRACT")
-
         return result
+
+    async def extract_symbol_async(self, symbol: str):
+        """Async wrapper cho extract_symbol."""
+        return await asyncio.to_thread(self.extract_symbol, symbol)
 
     def extract_symbol(self, symbol: str):
         """Extract dữ liệu realtime cho một symbol.
@@ -217,10 +197,6 @@ class RealtimeExtract:
 
                 # Lùi thời gian
                 current_end = current_start
-
-                # Delay
-                if current_end > time_start:
-                    time.sleep(self.request_delay)
 
             except Exception as e:
                 self.logger.error(f"Lỗi khi fetch batch: {str(e)}")

@@ -1,9 +1,19 @@
 import sys
-import os
+from pathlib import Path
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.convert_datetime_util import ConvertDatetime
+def find_project_root(current_file, marker="requirements.txt"):
+    current_path = Path(current_file).resolve()
+    for parent in current_path.parents:
+        if (parent / marker).exists():
+            return parent
+    return current_path.parent
+
+
+project_root = find_project_root(__file__, marker="requirements.txt")
+sys.path.insert(0, str(project_root))
+
+from util.convert_datetime_util import ConvertDatetime
 
 
 def main():
@@ -16,27 +26,19 @@ def main():
 
     # Nếu truyền đối số 'realtime' thì chạy realtime pipeline LIÊN TỤC
     if len(sys.argv) >= 2 and sys.argv[1] == "realtime":
-        from src.realtime_pipeline import RealtimePipeline
+        import asyncio
+        from pipeline.realtime_pipeline import RealtimePipeline
 
-        print("\nChạy Realtime Pipeline - LIÊN TỤC")
+        print("\nChạy Realtime Pipeline - LIÊN TỤC MỖI 1 PHÚT")
 
-        # Lấy interval từ argument nếu có
-        interval = 900  # mặc định 15 phút
-        if len(sys.argv) >= 3:
-            try:
-                interval = int(sys.argv[2])
-                print(f"Interval: {interval} giây ({interval / 60:.1f} phút)")
-            except ValueError:
-                print(f"Interval không hợp lệ, dùng mặc định: {interval} giây")
-
-        pipe = RealtimePipeline(loop_interval=interval)
-        pipe.run(continuous=True)  # Chạy liên tục
+        pipe = RealtimePipeline()
+        asyncio.run(pipe.run())
         return
 
     # Nếu truyền đối số 'all' thì chạy historical TRƯỚC, sau đó realtime LIÊN TỤC
     if len(sys.argv) >= 2 and sys.argv[1] == "all":
-        from src.pipeline import HistoricalPipeline
-        from src.realtime_pipeline import RealtimePipeline
+        from pipeline.pipeline import HistoricalPipeline
+        from pipeline.realtime_pipeline import RealtimePipeline
         from config.mongo_config import MongoConfig
         from config.variable_config import EXTRACT_DATA_CONFIG
 
@@ -89,23 +91,16 @@ def main():
             historical_pipe.run()
             print("\nHOAN THANH Historical Pipeline")
 
-        # Lấy interval từ argument nếu có
-        interval = 900  # mặc định 15 phút
-        if len(sys.argv) >= 3:
-            try:
-                interval = int(sys.argv[2])
-            except ValueError:
-                pass
-
         print("\n")
-        print("BUỚC 2: Chạy Realtime Pipeline - Chế độ LIÊN TỤC")
-        print(f"Interval: {interval} giây ({interval / 60:.1f} phút)")
+        print("BUỚC 2: Chạy Realtime Pipeline - Chế độ LIÊN TỤC MỖI 1 PHÚT")
 
-        realtime_pipe = RealtimePipeline(loop_interval=interval)
-        realtime_pipe.run(continuous=True)  # Chạy liên tục
+        import asyncio
+
+        realtime_pipe = RealtimePipeline()
+        asyncio.run(realtime_pipe.run())
         return
 
-    from src.pipeline import HistoricalPipeline
+    from pipeline.pipeline import HistoricalPipeline
 
     print("\nChạy Historical Pipeline (mặc định)")
     pipe = HistoricalPipeline()

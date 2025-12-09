@@ -66,7 +66,6 @@ start() {
 
     echo "Khởi động CMC Project..."
     echo "  - Chạy Historical Pipeline (lần đầu)"
-    echo "  - Sau đó chạy Realtime Pipeline (liên tục mỗi 15 phút)"
     # Chạy Python với nohup
     # PYTHONUNBUFFERED=1 để Python không buffer output
     # Python logger (TimedRotatingFileHandler) sẽ tự động quản lý log rotation
@@ -175,7 +174,6 @@ case "$1" in
         echo ""
         echo "Workflow:"
         echo "  1. Chạy Historical Pipeline - Lấy toàn bộ lịch sử (chạy 1 lần)"
-        echo "  2. Chạy Realtime Pipeline - Cập nhật liên tục (mỗi 15 phút)"
         exit 1
         ;;
 esac
