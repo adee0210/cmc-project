@@ -1,8 +1,5 @@
-import sys
-import json
-from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
