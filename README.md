@@ -116,7 +116,7 @@ Dữ liệu được lưu vào MongoDB với cấu trúc:
 }
 ```
 
-## 🔧 Cấu hình nâng cao
+##  Cấu hình nâng cao
 
 File `config/variable_config.py`:
 
@@ -149,7 +149,7 @@ EXTRACT_DATA_CONFIG = {
 - Interval 15m: 399 records = 99.75 giờ ≈ 4.16 ngày
 - Đã tối ưu: `batch_seconds = 4 ngày`
 
-## 📂 Cấu trúc thư mục
+##  Cấu trúc thư mục
 
 ```
 cmc_symbol_project/
@@ -183,3 +183,4 @@ cmc_symbol_project/
 - Realtime pipeline tự động loại bỏ duplicate
 
 - MongoDB index unique trên `(symbol, datetime)`
+
