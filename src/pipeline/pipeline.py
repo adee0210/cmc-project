@@ -1,5 +1,3 @@
-import sys
-
 from extract.extract import Extract as HistoricalExtract
 from load.load import HistoricalLoad
 

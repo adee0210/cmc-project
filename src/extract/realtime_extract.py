@@ -34,19 +34,38 @@ class RealtimeExtract:
         self.cmc_symbol_ids = self.config.get("cmc_symbol_ids", {})
         self.converter = ConvertDatetime()
 
-        # Kết nối MongoDB để kiểm tra data
+        # Kết nối MongoDB để kiểm tra data (lazy connection)
         self.mongo_config = MongoConfig()
-        self.mongo_client = self.mongo_config.get_client()
-        self.db = self.mongo_client.get_database(self.config.get("database", "cmc_db"))
-        self.collection = self.db.get_collection(
-            self.config.get("historical_collection", "cmc")
-        )
+        self.mongo_client = None
+        self.db = None
+        self.collection = None
 
         # API giới hạn 399 bản ghi, tương đương khoảng 4 ngày với interval 15m
         self.max_records_per_request = 399
         self.max_batch_seconds = 4 * 24 * 3600  # 4 ngay
 
         self.logger.info(f"Khởi tạo Realtime Extract với symbols: {self.symbols}")
+
+    def _get_mongo_client(self):
+        """Lazy connection: tạo client khi cần, tự động reconnect nếu bị đóng."""
+        try:
+            if self.mongo_client is None:
+                self.logger.info("Đang kết nối MongoDB...")
+                self.mongo_client = self.mongo_config.get_client()
+                self.db = self.mongo_client.get_database(
+                    self.config.get("database", "cmc_db")
+                )
+                self.collection = self.db.get_collection(
+                    self.config.get("historical_collection", "cmc")
+                )
+                self.logger.info("Kết nối MongoDB thành công")
+            return self.collection
+        except Exception as e:
+            self.logger.error(f"Lỗi kết nối MongoDB: {str(e)}")
+            self.mongo_client = None
+            self.db = None
+            self.collection = None
+            return None
 
     def get_latest_datetime_in_db(self, symbol: str) -> Optional[datetime]:
         """Lấy thời điểm mới nhất trong DB cho một symbol.
@@ -58,8 +77,14 @@ class RealtimeExtract:
             datetime của bản ghi mới nhất, hoặc None nếu chưa có dữ liệu
         """
         try:
+            # Lấy collection với lazy connection
+            collection = self._get_mongo_client()
+            if collection is None:
+                self.logger.warning("Không thể kết nối MongoDB, trả về None")
+                return None
+
             # Tìm bản ghi mới nhất theo datetime
-            latest_record = self.collection.find_one(
+            latest_record = collection.find_one(
                 {"symbol": symbol.upper()}, sort=[("datetime", DESCENDING)]
             )
 
@@ -87,20 +112,27 @@ class RealtimeExtract:
         """
         self.logger.info("\nBẮT ĐẦU REALTIME EXTRACT")
 
-        # Chạy song song tất cả symbols
+        # Chạy song song tất cả symbols với return_exceptions=True để không crash khi 1 task lỗi
         tasks = [self.extract_symbol_async(symbol.lower()) for symbol in self.symbols]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Xử lý kết quả
+        # Xử lý kết quả - không raise exception, chỉ log
         result = {}
         for symbol, res in zip(self.symbols, results):
             symbol_lower = symbol.lower()
             if isinstance(res, Exception):
                 self.logger.error(f"Lỗi khi extract {symbol_lower.upper()}: {str(res)}")
+                # Không raise, chỉ log và tiếp tục với symbol khác
                 result[symbol_lower] = pd.DataFrame()
             else:
-                df, is_already_updated = res
-                result[symbol_lower] = df
+                try:
+                    df, is_already_updated = res
+                    result[symbol_lower] = df
+                except Exception as e:
+                    self.logger.error(
+                        f"Lỗi khi unpack result cho {symbol_lower.upper()}: {str(e)}"
+                    )
+                    result[symbol_lower] = pd.DataFrame()
 
                 if not df.empty:
                     self.logger.info(
@@ -260,12 +292,34 @@ class RealtimeExtract:
 
         self.logger.info(f"API URL: {url}")
 
-        # Gọi API
-        try:
-            response = requests.get(url, timeout=30)
-            self.logger.info(f"API Response Status: {response.status_code}")
+        # Gọi API với retry và exponential backoff
+        max_retries = 3
+        backoff_seconds = 1
 
-            response.raise_for_status()
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=30)
+                self.logger.info(f"API Response Status: {response.status_code}")
+
+                response.raise_for_status()
+                break  # Thành công, thoát khỏi vòng lặp retry
+            except requests.exceptions.RequestException as e:
+                self.logger.warning(
+                    f"API request thất bại (attempt {attempt + 1}/{max_retries}): {str(e)}"
+                )
+                if attempt < max_retries - 1:
+                    import time
+
+                    self.logger.info(f"Chờ {backoff_seconds}s trước khi retry...")
+                    time.sleep(backoff_seconds)
+                    backoff_seconds = min(
+                        backoff_seconds * 2, 60
+                    )  # Tăng dần, tối đa 60s
+                else:
+                    self.logger.error(f"Hết số lần retry cho API request: {str(e)}")
+                    return []
+
+        try:
 
             data = response.json()
             self.logger.info(

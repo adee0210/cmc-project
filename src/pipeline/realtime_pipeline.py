@@ -22,7 +22,7 @@ class RealtimePipeline:
         self.is_running = False
 
     async def run_once(self):
-        """Chạy pipeline 1 lần (extract + load)."""
+        """Chạy pipeline 1 lần (extract + load). Không raise exception để crash."""
         self.logger.info(f"\nVÒNG LẶP - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         try:
@@ -30,7 +30,12 @@ class RealtimePipeline:
             data_map = await self.extractor.extract()
 
             # Load vào MongoDB
-            self.loader.realtime_load(data_map=data_map)
+            try:
+                self.loader.realtime_load(data_map=data_map)
+            except Exception as e:
+                self.logger.error(f"Lỗi khi load dữ liệu: {str(e)}")
+                # Không raise, tiếp tục chạy vòng lặp tiếp theo
+                return False
 
             # Thống kê
             total_records = sum(len(df) for df in data_map.values() if not df.empty)
@@ -40,6 +45,7 @@ class RealtimePipeline:
 
         except Exception as e:
             self.logger.error(f"Lỗi trong pipeline: {str(e)}")
+            # Không raise, chỉ return False để tiếp tục vòng lặp
             return False
 
     async def run(self):
@@ -53,7 +59,15 @@ class RealtimePipeline:
         try:
             while self.is_running:
                 run_count += 1
-                await self.run_once()
+
+                # Chạy pipeline, không để lỗi crash vòng lặp
+                try:
+                    success = await self.run_once()
+                    if not success:
+                        self.logger.warning("Vòng lặp gặp lỗi, sẽ thử lại sau 60 giây")
+                except Exception as e:
+                    self.logger.error(f"Lỗi không mong đợi trong run_once: {str(e)}")
+                    # Không raise, tiếp tục vòng lặp
 
                 # Chờ 60 giây trước khi chạy tiếp
                 self.logger.info("Chờ 60 giây...\n")
@@ -65,9 +79,9 @@ class RealtimePipeline:
             self.logger.info("Đang dừng Realtime Pipeline")
             self.is_running = False
         except Exception as e:
-            self.logger.error(f"\nLỗi nghiêm trọng: {str(e)}")
+            self.logger.error(f"\nLỗi nghiêm trọng trong vòng lặp chính: {str(e)}")
+            # Log nhưng không raise, để pipeline có thể restart nếu cần
             self.is_running = False
-            raise
 
     def stop(self):
         """Dừng pipeline."""
