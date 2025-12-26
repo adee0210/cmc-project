@@ -79,9 +79,9 @@ class RealtimePipeline:
             self.logger.info("Đang dừng Realtime Pipeline")
             self.is_running = False
         except Exception as e:
-            self.logger.error(f"\nLỗi nghiêm trọng trong vòng lặp chính: {str(e)}")
-            # Log nhưng không raise, để pipeline có thể restart nếu cần
-            self.is_running = False
+            self.logger.error(f"\nLỗi nghiêm trọng vòng lặp chính: {str(e)}")
+            self.logger.info("Pipeline sẽ tiếp tục chạy vòng lặp tiếp theo...")
+            # Không raise, để pipeline tiếp tục nếu có thể
 
     def stop(self):
         """Dừng pipeline."""
