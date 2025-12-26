@@ -95,19 +95,19 @@ def main():
         print("BUỚC 2: Chạy Realtime Pipeline - Chế độ LIÊN TỤC MỖI 1 PHÚT")
 
         import asyncio
+        import time
 
-        realtime_pipe = RealtimePipeline()
-        try:
-            asyncio.run(realtime_pipe.run())
-        except Exception as e:
-            print(f"\nLỗi nghiêm trọng trong Realtime Pipeline: {str(e)}")
-            print("Pipeline sẽ được restart sau 30 giây...")
-            import time
-
-            time.sleep(30)
-            # Restart pipeline
-            realtime_pipe = RealtimePipeline()
-            asyncio.run(realtime_pipe.run())
+        while True:
+            try:
+                realtime_pipe = RealtimePipeline()
+                asyncio.run(realtime_pipe.run())
+                # Nếu run() kết thúc bình thường (không exception), break
+                break
+            except Exception as e:
+                print(f"\nLỗi nghiêm trọng trong Realtime Pipeline: {str(e)}")
+                print("Pipeline sẽ được restart sau 30 giây...")
+                time.sleep(30)
+                print("Đang restart Realtime Pipeline...")
         return
 
     from pipeline.pipeline import HistoricalPipeline
