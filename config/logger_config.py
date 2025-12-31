@@ -14,7 +14,9 @@ class LoggerConfig:
         # dirname(__file__) = /home/duc_le/cmc-project/config
         # dirname(dirname(__file__)) = /home/duc_le/cmc-project
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        base_path = os.path.join(root_dir, log_file)
+        logs_dir = os.path.join(root_dir, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        base_path = os.path.join(logs_dir, log_file)
 
         # formatter
         formatter = logging.Formatter(

@@ -1,2 +1,7 @@
 .env
 *.log
+logs/
+cmc_project.pid
+.venv/
+__pycache__/
+*.pyc
