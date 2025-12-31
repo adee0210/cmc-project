@@ -71,9 +71,7 @@ class Extract:
                 try:
                     df = future.result()
                     result[symbol] = df
-                    self.logger.info(
-                        f"✓ Hoàn thành {symbol.upper()}: {len(df)} bản ghi"
-                    )
+                    self.logger.info(f"Hoàn thành {symbol.upper()}: {len(df)} bản ghi")
 
                     # Gửi cảnh báo nếu không có data
                     if df.empty:
@@ -129,10 +127,10 @@ class Extract:
                 )
 
                 if not records or len(records) == 0:
-                    self.logger.info(f"  ✓ Không còn dữ liệu - Dừng lại")
+                    self.logger.info(f"Không còn dữ liệu - Dừng lại")
                     break
 
-                self.logger.info(f"  ✓ Lấy được: {len(records)} bản ghi")
+                self.logger.info(f"Lấy được: {len(records)} bản ghi")
                 all_data.extend(records)
                 total_records += len(records)
 
@@ -201,7 +199,7 @@ class Extract:
         return quotes
 
     def _convert_to_dataframe(self, records: List[Dict], symbol: str) -> pd.DataFrame:
-        """Chuyển đổi list các bản ghi thành DataFrame chuẩn.
+        """Chuyển đổi list các bản ghi thành DataFrame.
 
         Args:
             records: List các quote từ API
