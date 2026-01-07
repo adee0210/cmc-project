@@ -1,5 +1,10 @@
+import asyncio
+import os
 import sys
+import signal
+import logging
 from pathlib import Path
+from datetime import datetime
 
 
 def find_project_root(current_file, marker="requirements.txt"):
@@ -13,7 +18,224 @@ def find_project_root(current_file, marker="requirements.txt"):
 project_root = find_project_root(__file__, marker="requirements.txt")
 sys.path.insert(0, str(project_root))
 
+from config.logger_config import LoggerConfig
+from pipeline.pipeline import HistoricalPipeline
+from pipeline.realtime_pipeline import RealtimePipeline
+from config.mongo_config import MongoConfig
+from config.variable_config import EXTRACT_DATA_CONFIG
 from util.convert_datetime_util import ConvertDatetime
+
+
+class CandlestickMain:
+    """Main application class with resilient error handling and graceful shutdown"""
+
+    def __init__(self, skip_existing=True):
+        self.logger = LoggerConfig.logger_config("Main Candlestick")
+        self.historical_completed = False
+        self.skip_existing = skip_existing  # Chỉ trích xuất dữ liệu còn thiếu
+
+        # Lấy cấu hình
+        self.symbols = EXTRACT_DATA_CONFIG.get("symbols", ["eth", "bnb", "xrp"])
+        self.database = EXTRACT_DATA_CONFIG.get("database", "cmc_db")
+        self.collection_name = EXTRACT_DATA_CONFIG.get("historical_collection", "cmc")
+
+        # Setup MongoDB connection
+        self.mongo_config = MongoConfig()
+        self.mongo_client = self.mongo_config.get_client()
+        self.db = self.mongo_client.get_database(self.database)
+        self.collection = self.db.get_collection(self.collection_name)
+
+        # Setup signal handlers cho graceful shutdown
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+        self.shutdown_requested = False
+
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals gracefully"""
+        self.logger.info(f"Nhận tín hiệu shutdown: {signum}")
+        self.shutdown_requested = True
+
+    def _check_if_historical_needed(self):
+        """
+        Kiểm tra xem có cần chạy historical extract không
+        Logic: Chỉ chạy historical extract nếu CHƯA CÓ DATA hoặc có symbol chưa có data
+        Returns: (needed, reason)
+            - needed: True nếu cần chạy historical
+            - reason: Lý do cần/không cần chạy
+        """
+        try:
+            self.logger.info("=" * 80)
+            self.logger.info("KIỂM TRA DỮ LIỆU TRONG DATABASE")
+            self.logger.info("=" * 80)
+
+            total_docs = self.collection.count_documents({})
+            self.logger.info(f"Tổng số documents trong DB: {total_docs:,}")
+
+            symbols_without_data = []
+            symbols_with_data = []
+
+            for symbol in self.symbols:
+                # Đếm số lượng records của symbol
+                count = self.collection.count_documents({"symbol": symbol.upper()})
+
+                if count == 0:
+                    self.logger.warning(
+                        f"[{symbol.upper()}] Chưa có dữ liệu trong DB (0 records)"
+                    )
+                    symbols_without_data.append(symbol)
+                else:
+                    # Lấy thông tin data mới nhất
+                    latest_record = self.collection.find_one(
+                        {"symbol": symbol.upper()}, sort=[("datetime", -1)]
+                    )
+                    if latest_record and "datetime" in latest_record:
+                        latest_dt_str = latest_record["datetime"]
+                        self.logger.info(
+                            f"[{symbol.upper()}] Đã có {count:,} records, mới nhất: {latest_dt_str}"
+                        )
+                    else:
+                        self.logger.info(
+                            f"[{symbol.upper()}] Đã có {count:,} records trong DB"
+                        )
+                    symbols_with_data.append(symbol)
+
+            self.logger.info("=" * 80)
+            if symbols_without_data:
+                reason = (
+                    f"Cần chạy historical cho {len(symbols_without_data)}/{len(self.symbols)} symbols chưa có data: "
+                    f"{', '.join(symbols_without_data[:5])}"
+                    + (
+                        f" và {len(symbols_without_data) - 5} symbols khác"
+                        if len(symbols_without_data) > 5
+                        else ""
+                    )
+                )
+                self.logger.info(f"KẾT LUẬN: {reason}")
+                self.logger.info("SẼ CHẠY HISTORICAL EXTRACT")
+                self.logger.info("=" * 80)
+                return True, reason
+            else:
+                reason = (
+                    f"Tất cả {len(self.symbols)} symbols đã có dữ liệu trong DB\n"
+                    f"Realtime extract sẽ tự động cập nhật dữ liệu mới"
+                )
+                self.logger.info(f"KẾT LUẬN: {reason}")
+                self.logger.info("BỎ QUA HISTORICAL EXTRACT - CHỈ CHẠY REALTIME")
+                self.logger.info("=" * 80)
+                return False, reason
+
+        except Exception as e:
+            self.logger.error(f"Lỗi khi kiểm tra data: {str(e)}")
+            self.logger.exception(e)
+            # Nếu lỗi, để an toàn thì KHÔNG chạy historical
+            return False, "Lỗi khi kiểm tra → Bỏ qua historical để an toàn"
+
+    def run_historical(self):
+        """Chạy pipeline lịch sử (chỉ chạy 1 lần nếu cần) - với resilient error handling"""
+        if self.historical_completed:
+            self.logger.info("Pipeline lịch sử đã được chạy, bỏ qua")
+            return
+
+        # Kiểm tra xem có cần chạy historical extract không
+        try:
+            needed, reason = self._check_if_historical_needed()
+        except Exception as e:
+            self.logger.error(
+                f"Lỗi khi kiểm tra historical data, bỏ qua historical: {str(e)}"
+            )
+            self.historical_completed = True
+            return
+
+        if not needed:
+            self.logger.info(f"BỎ QUA HISTORICAL EXTRACT: {reason}")
+            self.historical_completed = True
+            return
+
+        try:
+            self.logger.info("=" * 80)
+            self.logger.info("BẮT ĐẦU PIPELINE LỊCH SỬ")
+            self.logger.info(f"Lý do: {reason}")
+            if self.skip_existing:
+                self.logger.info("Chế độ: Chỉ trích xuất dữ liệu còn thiếu")
+            else:
+                self.logger.info("Chế độ: Trích xuất toàn bộ lại")
+            self.logger.info("=" * 80)
+
+            historical_pipeline = HistoricalPipeline()
+            # Chạy pipeline với error handling
+            try:
+                historical_pipeline.run()
+            except Exception as e:
+                self.logger.error(
+                    f"Lỗi trong historical pipeline, nhưng sẽ tiếp tục realtime: {str(e)}"
+                )
+
+            self.historical_completed = True
+            self.logger.info("=" * 80)
+            self.logger.info("HOÀN THÀNH PIPELINE LỊCH SỬ")
+            self.logger.info("=" * 80)
+        except Exception as e:
+            # Không raise, chỉ log để realtime vẫn chạy được
+            self.logger.error(f"Lỗi khi chạy pipeline lịch sử: {str(e)}")
+            self.logger.exception(e)
+            self.historical_completed = True  # Đánh dấu hoàn thành để tiếp tục realtime
+
+    def run_realtime(self):
+        """Chạy pipeline realtime liên tục - với resilient error handling"""
+        try:
+            self.logger.info("=" * 80)
+            self.logger.info("BẮT ĐẦU PIPELINE REALTIME")
+            self.logger.info("=" * 80)
+
+            realtime_pipeline = RealtimePipeline()
+
+            # Bắt đầu vòng lặp realtime liên tục
+            self.logger.info("=" * 80)
+            self.logger.info("BẮT ĐẦU VÒNG LẶP REALTIME (CẬP NHẬT MỖI 1 PHÚT)")
+            self.logger.info("=" * 80)
+
+            # Chạy pipeline realtime (sẽ chạy liên tục bên trong)
+            asyncio.run(realtime_pipeline.run())
+
+            self.logger.info("=" * 80)
+            self.logger.info("DỪNG PIPELINE REALTIME")
+            self.logger.info("=" * 80)
+
+        except Exception as e:
+            self.logger.error(f"Lỗi nghiêm trọng khi chạy pipeline realtime: {str(e)}")
+            self.logger.exception(e)
+
+    def run(self):
+        """Chạy toàn bộ ứng dụng"""
+        try:
+            self.logger.info("=" * 80)
+            self.logger.info("KHỞI ĐỘNG ỨNG DỤNG CANDLESTICK")
+            self.logger.info(f"Cấu hình: Async processing")
+            if self.skip_existing:
+                self.logger.info(
+                    "Chế độ: Tự động kiểm tra và chỉ trích xuất dữ liệu còn thiếu"
+                )
+            else:
+                self.logger.info("Chế độ: Trích xuất toàn bộ lại từ đầu")
+            self.logger.info("=" * 80)
+
+            # Bước 1: Chạy pipeline lịch sử (chỉ 1 lần)
+            self.run_historical()
+
+            # Bước 2: Chạy pipeline realtime liên tục
+            self.run_realtime()
+
+        except KeyboardInterrupt:
+            self.logger.info("Nhận tín hiệu dừng từ người dùng - Thoát ứng dụng")
+        except Exception as e:
+            self.logger.error(f"Lỗi nghiêm trọng: {str(e)}")
+            self.logger.exception(e)
+            # Re-raise để trigger restart loop nếu cần
+            raise
+        finally:
+            self.logger.info("=" * 80)
+            self.logger.info("THOÁT ỨNG DỤNG CANDLESTICK")
+            self.logger.info("=" * 80)
 
 
 def main():
@@ -24,97 +246,62 @@ def main():
         print(conv.iso_to_sql_datetime(iso))
         return
 
-    # Nếu truyền đối số 'realtime' thì chạy realtime pipeline LIÊN TỤC
+    # Nếu truyền đối số 'realtime' thì chỉ chạy realtime pipeline LIÊN TỤC
     if len(sys.argv) >= 2 and sys.argv[1] == "realtime":
-        import asyncio
-        from pipeline.realtime_pipeline import RealtimePipeline
+        print("\n" + "=" * 80)
+        print("CHẾ ĐỘ REALTIME - Chỉ chạy Realtime Pipeline")
+        print("=" * 80)
 
-        print("\nChạy Realtime Pipeline - LIÊN TỤC MỖI 1 PHÚT")
-
-        pipe = RealtimePipeline()
-        asyncio.run(pipe.run())
+        realtime_pipe = RealtimePipeline()
+        asyncio.run(realtime_pipe.run())
         return
 
-    # Nếu truyền đối số 'all' thì chạy historical TRƯỚC, sau đó realtime LIÊN TỤC
-    if len(sys.argv) >= 2 and sys.argv[1] == "all":
-        from pipeline.pipeline import HistoricalPipeline
-        from pipeline.realtime_pipeline import RealtimePipeline
-        from config.mongo_config import MongoConfig
-        from config.variable_config import EXTRACT_DATA_CONFIG
+    # Nếu truyền đối số 'all' hoặc không có đối số → chạy ứng dụng đầy đủ
+    if len(sys.argv) >= 2 and sys.argv[1] == "all" or len(sys.argv) == 1:
+        print("=" * 80)
+        print("KHỞI ĐỘNG CANDLESTICK PIPELINE")
+        print("=" * 80)
+        print(f"Database: {EXTRACT_DATA_CONFIG.get('database', 'cmc_db')}")
+        print(f"Collection: {EXTRACT_DATA_CONFIG.get('historical_collection', 'cmc')}")
+        print(f"Interval: 1 phút")
+        print(f"Symbols: {len(EXTRACT_DATA_CONFIG.get('symbols', []))} coins")
+        print("=" * 80)
+        print("Theo dõi log realtime: tail -f logs/main.log")
+        print("=" * 80)
+        print()
 
-        print("\n")
-        print("=" * 70)
-        print("KIỂM TRA DỮ LIỆU LỊCH SỬ")
-        print("=" * 70)
-
-        # Kiểm tra xem đã có dữ liệu trong DB chưa
-        mongo_config = MongoConfig()
-        mongo_client = mongo_config.get_client()
-        db = mongo_client.get_database(EXTRACT_DATA_CONFIG.get("database", "cmc_db"))
-        collection = db.get_collection(
-            EXTRACT_DATA_CONFIG.get("historical_collection", "cmc")
-        )
-
-        total_docs = collection.count_documents({})
-        symbols = EXTRACT_DATA_CONFIG.get("symbols", ["eth", "bnb", "xrp"])
-
-        print(f"Tổng số documents trong DB: {total_docs}")
-
-        if total_docs > 0:
-            # Kiểm tra chi tiết cho từng symbol
-            print("\nThống kê theo symbol:")
-            all_have_data = True
-            for symbol in symbols:
-                count = collection.count_documents({"symbol": symbol.upper()})
-                print(f"  {symbol.upper()}: {count} bản ghi")
-                if count == 0:
-                    all_have_data = False
-
-            if all_have_data:
-                print("\n=> Đã có dữ liệu lịch sử cho tất cả symbols")
-                print("=> BỎ QUA bước Historical Pipeline")
-                print("\n" + "=" * 70)
-            else:
-                print("\n=> Có symbol chưa có dữ liệu")
-                print("=> CHẠY Historical Pipeline")
-                print("\n" + "=" * 70)
-                print("BUỚC 1: Chạy Historical Pipeline - Lấy dữ liệu lịch sử")
-                historical_pipe = HistoricalPipeline()
-                historical_pipe.run()
-                print("\nHOÀN THÀNH Historical Pipeline")
-        else:
-            print("\n=> Chưa có dữ liệu trong DB")
-            print("=> CHAY Historical Pipeline")
-            print("\n" + "=" * 70)
-            print("BUOC 1: Chay Historical Pipeline - Lay du lieu lich su")
-            historical_pipe = HistoricalPipeline()
-            historical_pipe.run()
-            print("\nHOAN THANH Historical Pipeline")
-
-        print("\n")
-        print("BUỚC 2: Chạy Realtime Pipeline - Chế độ LIÊN TỤC MỖI 1 PHÚT")
-
-        import asyncio
-        import time
-
-        while True:
-            try:
-                realtime_pipe = RealtimePipeline()
-                asyncio.run(realtime_pipe.run())
-                # Nếu run() kết thúc bình thường (không exception), break
-                break
-            except Exception as e:
-                print(f"\nLỗi nghiêm trọng trong Realtime Pipeline: {str(e)}")
-                print("Pipeline sẽ được restart sau 30 giây...")
-                time.sleep(30)
-                print("Đang restart Realtime Pipeline...")
+        try:
+            main_app = CandlestickMain(skip_existing=True)
+            main_app.run()
+        except KeyboardInterrupt:
+            print("\n✓ Dừng ứng dụng bởi người dùng (Ctrl+C)")
+            logger = LoggerConfig.logger_config("Main Candlestick")
+            logger.info("Ứng dụng dừng bởi người dùng")
+        except Exception as e:
+            print(f"\n✗ Lỗi: {str(e)}")
+            logger = LoggerConfig.logger_config("Main Candlestick")
+            logger.error(f"Ứng dụng bị crash: {str(e)}")
+            logger.exception(e)
         return
 
-    from pipeline.pipeline import HistoricalPipeline
+    # Nếu truyền đối số 'historical' thì chỉ chạy historical pipeline
+    if len(sys.argv) >= 2 and sys.argv[1] == "historical":
+        print("\n" + "=" * 80)
+        print("CHẾ ĐỘ HISTORICAL - Chỉ chạy Historical Pipeline")
+        print("=" * 80)
 
-    print("\nChạy Historical Pipeline (mặc định)")
-    pipe = HistoricalPipeline()
-    pipe.run()
+        historical_pipe = HistoricalPipeline()
+        historical_pipe.run()
+        print("\n✓ Hoàn thành Historical Pipeline")
+        return
+
+    # Mặc định: hiển thị hướng dẫn sử dụng
+    print("\nCách sử dụng:")
+    print("  python src/main.py              # Chạy đầy đủ (historical + realtime)")
+    print("  python src/main.py all          # Chạy đầy đủ (historical + realtime)")
+    print("  python src/main.py realtime     # Chỉ chạy realtime")
+    print("  python src/main.py historical   # Chỉ chạy historical")
+    print("  python src/main.py convert ISO  # Convert ISO string")
 
 
 if __name__ == "__main__":
