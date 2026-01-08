@@ -1,5 +1,5 @@
 from pymongo import MongoClient
-from config.variable_config import MONGO_CONFIG
+from configs.variable_config import MONGO_CONFIG
 
 
 class MongoConfig:

@@ -6,8 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import requests
 
-from config.logger_config import LoggerConfig
-from config.variable_config import EXTRACT_DATA_CONFIG
+from configs.logger_config import LoggerConfig
+from configs.variable_config import EXTRACT_DATA_CONFIG
 from util.convert_datetime_util import ConvertDatetime
 
 

@@ -2,9 +2,9 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from config.logger_config import LoggerConfig
-from config.mongo_config import MongoConfig
-from config.variable_config import EXTRACT_DATA_CONFIG
+from configs.logger_config import LoggerConfig
+from configs.mongo_config import MongoConfig
+from configs.variable_config import EXTRACT_DATA_CONFIG
 
 
 class HistoricalLoad:

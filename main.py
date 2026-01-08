@@ -4,6 +4,7 @@ import sys
 import signal
 import logging
 import subprocess
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -17,12 +18,13 @@ sys.path.insert(0, os.path.join(project_root, "src"))
 logging.getLogger("tvDatafeed").setLevel(logging.CRITICAL)
 logging.getLogger("tvDatafeed.main").setLevel(logging.CRITICAL)
 
+# Import modules sau khi đã setup sys.path
 from configs.logger_config import LoggerConfig
-from pipeline.pipeline import HistoricalPipeline
-from pipeline.realtime_pipeline import RealtimePipeline
 from configs.mongo_config import MongoConfig
 from configs.variable_config import EXTRACT_DATA_CONFIG
 from util.convert_datetime_util import ConvertDatetime
+from pipeline.pipeline import HistoricalPipeline
+from pipeline.realtime_pipeline import RealtimePipeline
 
 
 def setup_venv_if_needed():
@@ -52,10 +54,305 @@ def setup_venv_if_needed():
         print(" Virtual environment đã tồn tại")
 
 
+def get_project_root():
+    """Lấy đường dẫn root của project"""
+    return Path(__file__).parent.resolve()
+
+
+def get_venv_path():
+    """Lấy đường dẫn virtual environment"""
+    return get_project_root() / ".venv"
+
+
+def get_python_exe():
+    """Lấy đường dẫn Python executable trong venv"""
+    venv_path = get_venv_path()
+    if not venv_path.exists():
+        print("Virtual environment chưa tồn tại. Đang tạo...")
+        try:
+            # Tạo venv
+            subprocess.run(
+                [sys.executable, "-m", "venv", str(venv_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            print(f"Đã tạo virtual environment tại {venv_path}")
+
+            # Cài dependencies
+            pip_exe = (
+                venv_path / "bin" / "pip"
+                if os.name != "nt"
+                else venv_path / "Scripts" / "pip.exe"
+            )
+            requirements_file = get_project_root() / "requirements.txt"
+
+            if requirements_file.exists():
+                print("Đang cài đặt dependencies...")
+                result = subprocess.run(
+                    [str(pip_exe), "install", "-r", str(requirements_file)],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    print("Đã cài đặt dependencies thành công")
+                else:
+                    print(f"Lỗi khi cài dependencies: {result.stderr}")
+                    sys.exit(1)
+        except subprocess.CalledProcessError as e:
+            print(f"Lỗi khi tạo virtual environment: {e}")
+            sys.exit(1)
+
+    if os.name == "nt":
+        return venv_path / "Scripts" / "python.exe"
+    else:
+        return venv_path / "bin" / "python"
+
+
+def get_pid_file():
+    """Lấy đường dẫn file PID."""
+    return get_project_root() / "cmc_project.pid"
+
+
+def get_log_file():
+    """Lấy đường dẫn log file"""
+    log_dir = get_project_root() / "logs"
+    log_dir.mkdir(exist_ok=True)
+    return log_dir / "main_pipeline.log"
+
+
+def is_daemon_running():
+    """Kiểm tra xem có đang chạy không"""
+    pid_file = get_pid_file()
+    if not pid_file.exists():
+        return False
+
+    try:
+        with open(pid_file, "r") as f:
+            pid = int(f.read().strip())
+
+        # Kiểm tra process có tồn tại không (Linux)
+        try:
+            os.kill(pid, 0)  # Signal 0 để kiểm tra process tồn tại
+            return True
+        except OSError as e:
+            # Chỉ xóa PID file nếu process THỰC SỰ không tồn tại (errno 3)
+            if e.errno == 3:  # ESRCH - No such process
+                pid_file.unlink()
+            return False
+    except (ValueError, FileNotFoundError):
+        return False
+
+
+def get_daemon_pid():
+    """Lấy PID của daemon đang chạy"""
+    pid_file = get_pid_file()
+    if pid_file.exists():
+        try:
+            with open(pid_file, "r") as f:
+                return int(f.read().strip())
+        except (ValueError, FileNotFoundError):
+            return None
+    return None
+
+
+def stop_daemon(force=False):
+    """Dừng"""
+    pid_file = get_pid_file()
+
+    if not pid_file.exists():
+        print("Không tìm thấy file PID. Daemon có thể chưa chạy.")
+        return True
+
+    try:
+        with open(pid_file, "r") as f:
+            pid = int(f.read().strip())
+
+        print(f"Đang dừng CMC Pipeline (PID: {pid})...")
+
+        try:
+            os.kill(pid, signal.SIGTERM)
+
+            # Đợi tối đa 10 giây
+            for i in range(10):
+                time.sleep(1)
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    # Process đã dừng
+                    break
+            else:
+                # Nếu sau 10 giây vẫn chạy, force kill
+                if force:
+                    print("Process vẫn đang chạy, force killing...")
+                    os.kill(pid, signal.SIGKILL)
+                    time.sleep(1)
+        except OSError as e:
+            if e.errno == 3:  # No such process
+                print("Process đã dừng.")
+            else:
+                raise
+
+        # Xóa PID file
+        if pid_file.exists():
+            pid_file.unlink()
+
+        print("CMC Pipeline đã dừng thành công.")
+        return True
+
+    except Exception as e:
+        print(f"Lỗi khi dừng: {e}")
+        return False
+
+
+def start_daemon():
+    """Khởi động"""
+    if is_daemon_running():
+        pid = get_daemon_pid()
+        print(f"CMC Pipeline đang chạy (PID: {pid})")
+        return False
+
+    python_exe = get_python_exe()
+    project_root = get_project_root()
+    script_path = project_root / "main.py"
+    log_file = get_log_file()
+    pid_file = get_pid_file()
+
+    print("Đang khởi động CMC Pipeline...")
+    print(f"Log file: {log_file}")
+
+    try:
+        with open(str(log_file), "a") as log_f:
+            process = subprocess.Popen(
+                [str(python_exe), str(script_path), "--daemon"],
+                stdout=log_f,
+                stderr=log_f,
+                stdin=subprocess.DEVNULL,
+                cwd=str(project_root),
+                start_new_session=True,
+            )
+
+        # Lưu PID vào file
+        with open(pid_file, "w") as f:
+            f.write(str(process.pid))
+
+        time.sleep(0.5)
+
+        # Kiểm tra process có chạy không
+        if process.poll() is None:
+            print(f"CMC Pipeline đã khởi động (PID: {process.pid})")
+            print("Dùng 'python main.py tail' để xem logs")
+            return True
+        else:
+            print("Lỗi khi khởi động pipeline - process thoát ngay lập tức")
+            if pid_file.exists():
+                pid_file.unlink()
+            return False
+
+    except Exception as e:
+        print(f"Lỗi khi khởi động: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
+def show_status():
+    """Hiển thị trạng thái"""
+    if is_daemon_running():
+        pid = get_daemon_pid()
+        print(f"Exchange Rate Pipeline đang chạy (PID: {pid})")
+
+        try:
+            # Đọc thông tin từ /proc
+            with open(f"/proc/{pid}/stat", "r") as f:
+                stat = f.read().split()
+                # stat[2] = state
+                print(f"Trạng thái process: {stat[2]}")
+
+            # Hiển thị uptime
+            result = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "etime="], capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"Uptime: {result.stdout.strip()}")
+
+        except Exception as e:
+            print(f"Không thể lấy thông tin chi tiết: {e}")
+    else:
+        print("CMC Pipeline không chạy")
+
+
+def tail_logs(lines=50):
+    """Xem log"""
+    log_file = get_log_file()
+    if not log_file.exists():
+        print(f"Không tìm thấy log file: {log_file}")
+        return
+
+    print(f"Hiển thị {lines} dòng cuối của {log_file}")
+    print("=" * 80)
+    subprocess.run(["tail", f"-n{lines}", str(log_file)])
+
+
+def follow_logs():
+    """Theo dõi log realtime"""
+    log_file = get_log_file()
+    if not log_file.exists():
+        print(f"Không tìm thấy log file: {log_file}")
+        return
+
+    print(f"Theo dõi logs từ {log_file}")
+    print("Nhấn Ctrl+C để dừng")
+    print("=" * 80)
+    try:
+        subprocess.run(["tail", "-f", str(log_file)])
+    except KeyboardInterrupt:
+        print("\nĐã dừng theo dõi logs")
+
+
+def restart_daemon():
+    """Restart daemon"""
+    print("Đang khởi động lại CMC Pipeline...")
+    stop_daemon(force=True)
+    time.sleep(2)
+    start_daemon()
+
+
+def show_help():
+    """Hiển thị help"""
+    print(
+        """
+Cách dùng: python main.py [command]
+
+Lệnh:
+    start       Khởi động pipeline
+    stop        Dừng pipeline daemon
+    restart     Khởi động lại pipeline daemon
+    status      Hiển thị trạng thái daemon
+    tail        Hiển thị 50 dòng log cuối
+    logs        Theo dõi logs real-time
+    help        Hiển thị hướng dẫn này
+
+Ví dụ:
+    python main.py start       # Khởi động
+    python main.py status      # Kiểm tra trạng thái
+    python main.py tail        # Xem log gần nhất
+    python main.py logs        # Theo dõi logs
+    python main.py restart     # Khởi động lại
+    python main.py stop        # Dừng
+"""
+    )
+
+
 class CandlestickMain:
     """Main application class with resilient error handling and graceful shutdown"""
 
     def __init__(self, skip_existing=True):
+        from configs.logger_config import LoggerConfig
+        from configs.mongo_config import MongoConfig
+        from configs.variable_config import EXTRACT_DATA_CONFIG
+
         self.logger = LoggerConfig.logger_config("Main Candlestick")
         self.historical_completed = False
         self.skip_existing = skip_existing  # Chỉ trích xuất dữ liệu còn thiếu
@@ -187,6 +484,8 @@ class CandlestickMain:
                 self.logger.info("Chế độ: Trích xuất toàn bộ lại")
             self.logger.info("=" * 80)
 
+            from pipeline.pipeline import HistoricalPipeline
+
             historical_pipeline = HistoricalPipeline()
             # Chạy pipeline với error handling
             try:
@@ -212,6 +511,8 @@ class CandlestickMain:
             self.logger.info("=" * 80)
             self.logger.info("BẮT ĐẦU PIPELINE REALTIME")
             self.logger.info("=" * 80)
+
+            from pipeline.realtime_pipeline import RealtimePipeline
 
             realtime_pipeline = RealtimePipeline()
 
@@ -265,28 +566,26 @@ class CandlestickMain:
 
 
 def main():
+    """Entry point chính."""
+    # Kiểm tra xem có đang chạy trong venv không
+    if not hasattr(sys, "real_prefix") and not (
+        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
+    ):
+        # Không phải venv, cần restart bằng venv python
+        venv_python = get_python_exe()
+        if str(venv_python) != sys.executable:
+            # Restart với venv python
+            args = [str(venv_python)] + sys.argv
+            os.execv(str(venv_python), args)
+
     # Tự động setup virtual environment nếu cần
     setup_venv_if_needed()
 
-    # Nếu truyền đối số 'convert <iso_string>' thì in kết quả chuyển đổi
-    if len(sys.argv) >= 3 and sys.argv[1] == "convert":
-        iso = sys.argv[2]
-        conv = ConvertDatetime()
-        print(conv.iso_to_sql_datetime(iso))
-        return
+    if len(sys.argv) < 2:
+        # Không có tham số - chạy logic cũ của CandlestickMain
+        from configs.variable_config import EXTRACT_DATA_CONFIG
+        from configs.logger_config import LoggerConfig
 
-    # Nếu truyền đối số 'realtime' thì chỉ chạy realtime pipeline LIÊN TỤC
-    if len(sys.argv) >= 2 and sys.argv[1] == "realtime":
-        print("\n" + "=" * 80)
-        print("CHẾ ĐỘ REALTIME - Chỉ chạy Realtime Pipeline")
-        print("=" * 80)
-
-        realtime_pipe = RealtimePipeline()
-        asyncio.run(realtime_pipe.run())
-        return
-
-    # Nếu truyền đối số 'all' hoặc không có đối số → chạy ứng dụng đầy đủ
-    if (len(sys.argv) >= 2 and sys.argv[1] == "all") or len(sys.argv) == 1:
         print("=" * 80)
         print("KHỞI ĐỘNG CANDLESTICK PIPELINE")
         print("=" * 80)
@@ -303,34 +602,124 @@ def main():
             main_app = CandlestickMain(skip_existing=True)
             main_app.run()
         except KeyboardInterrupt:
-            print("\n✓ Dừng ứng dụng bởi người dùng (Ctrl+C)")
+            print("\nDừng ứng dụng bởi người dùng (Ctrl+C)")
             logger = LoggerConfig.logger_config("Main Candlestick")
             logger.info("Ứng dụng dừng bởi người dùng")
         except Exception as e:
-            print(f"\n✗ Lỗi: {str(e)}")
+            print(f"\nLỗi: {str(e)}")
             logger = LoggerConfig.logger_config("Main Candlestick")
             logger.error(f"Ứng dụng bị crash: {str(e)}")
             logger.exception(e)
         return
 
-    # Nếu truyền đối số 'historical' thì chỉ chạy historical pipeline
-    if len(sys.argv) >= 2 and sys.argv[1] == "historical":
-        print("\n" + "=" * 80)
-        print("CHẾ ĐỘ HISTORICAL - Chỉ chạy Historical Pipeline")
-        print("=" * 80)
+    command = sys.argv[1].lower()
 
-        historical_pipe = HistoricalPipeline()
-        historical_pipe.run()
-        print("\n✓ Hoàn thành Historical Pipeline")
-        return
+    if command == "--daemon":
+        # Chạy logic chính của CandlestickMain
+        try:
+            main_app = CandlestickMain(skip_existing=True)
+            main_app.run()
+        except Exception as e:
+            print(f"Lỗi khi chạy daemon: {e}")
+            import traceback
 
-    # Mặc định: hiển thị hướng dẫn sử dụng
-    print("\nCách sử dụng:")
-    print("  python main.py              # Chạy đầy đủ (historical + realtime)")
-    print("  python main.py all          # Chạy đầy đủ (historical + realtime)")
-    print("  python main.py realtime     # Chỉ chạy realtime")
-    print("  python main.py historical   # Chỉ chạy historical")
-    print("  python main.py convert ISO  # Convert ISO string")
+            traceback.print_exc()
+    elif command == "start":
+        start_daemon()
+    elif command == "stop":
+        stop_daemon(force=True)
+    elif command == "restart":
+        restart_daemon()
+    elif command == "status":
+        show_status()
+    elif command in ["tail", "logs-tail"]:
+        tail_logs()
+    elif command in ["logs", "logs-follow"]:
+        follow_logs()
+    elif command == "help":
+        show_help()
+    else:
+        # Fallback về logic cũ cho các commands như 'realtime', 'historical', 'convert', 'all'
+        # Nếu truyền đối số 'convert <iso_string>' thì in kết quả chuyển đổi
+        if len(sys.argv) >= 3 and sys.argv[1] == "convert":
+            from util.convert_datetime_util import ConvertDatetime
+
+            iso = sys.argv[2]
+            conv = ConvertDatetime()
+            print(conv.iso_to_sql_datetime(iso))
+            return
+
+        # Nếu truyền đối số 'realtime' thì chỉ chạy realtime pipeline LIÊN TỤC
+        if len(sys.argv) >= 2 and sys.argv[1] == "realtime":
+            from pipeline.realtime_pipeline import RealtimePipeline
+
+            print("\n" + "=" * 80)
+            print("CHẾ ĐỘ REALTIME - Chỉ chạy Realtime Pipeline")
+            print("=" * 80)
+
+            realtime_pipe = RealtimePipeline()
+            asyncio.run(realtime_pipe.run())
+            return
+
+        # Nếu truyền đối số 'all' hoặc không có đối số → chạy ứng dụng đầy đủ
+        if (len(sys.argv) >= 2 and sys.argv[1] == "all") or len(sys.argv) == 1:
+            from configs.variable_config import EXTRACT_DATA_CONFIG
+            from configs.logger_config import LoggerConfig
+
+            print("=" * 80)
+            print("KHỞI ĐỘNG CANDLESTICK PIPELINE")
+            print("=" * 80)
+            print(f"Database: {EXTRACT_DATA_CONFIG.get('database', 'cmc_db')}")
+            print(
+                f"Collection: {EXTRACT_DATA_CONFIG.get('historical_collection', 'cmc')}"
+            )
+            print(f"Interval: 1 phút")
+            print(f"Symbols: {len(EXTRACT_DATA_CONFIG.get('symbols', []))} coins")
+            print("=" * 80)
+            print("Theo dõi log realtime: tail -f logs/main.log")
+            print("=" * 80)
+            print()
+
+            try:
+                main_app = CandlestickMain(skip_existing=True)
+                main_app.run()
+            except KeyboardInterrupt:
+                print("\nDừng ứng dụng bởi người dùng (Ctrl+C)")
+                logger = LoggerConfig.logger_config("Main Candlestick")
+                logger.info("Ứng dụng dừng bởi người dùng")
+            except Exception as e:
+                print(f"\nLỗi: {str(e)}")
+                logger = LoggerConfig.logger_config("Main Candlestick")
+                logger.error(f"Ứng dụng bị crash: {str(e)}")
+                logger.exception(e)
+            return
+
+        # Nếu truyền đối số 'historical' thì chỉ chạy historical pipeline
+        if len(sys.argv) >= 2 and sys.argv[1] == "historical":
+            from pipeline.pipeline import HistoricalPipeline
+
+            print("\n" + "=" * 80)
+            print("CHẾ ĐỘ HISTORICAL - Chỉ chạy Historical Pipeline")
+            print("=" * 80)
+
+            historical_pipe = HistoricalPipeline()
+            historical_pipe.run()
+            print("\nHoàn thành Historical Pipeline")
+            return
+
+        # Mặc định: hiển thị hướng dẫn sử dụng
+        print("\nCách sử dụng:")
+        print("  python main.py              # Chạy đầy đủ (historical + realtime)")
+        print("  python main.py all          # Chạy đầy đủ (historical + realtime)")
+        print("  python main.py realtime     # Chỉ chạy realtime")
+        print("  python main.py historical   # Chỉ chạy historical")
+        print("  python main.py convert ISO  # Convert ISO string")
+        print("  python main.py start        # Khởi động daemon")
+        print("  python main.py stop         # Dừng daemon")
+        print("  python main.py restart      # Khởi động lại daemon")
+        print("  python main.py status       # Kiểm tra trạng thái daemon")
+        print("  python main.py tail         # Xem log cuối")
+        print("  python main.py logs         # Theo dõi logs")
 
 
 if __name__ == "__main__":

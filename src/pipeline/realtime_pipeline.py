@@ -7,7 +7,7 @@ Chạy liên tục mỗi 1 phút, không có sleep phức tạp.
 import asyncio
 from datetime import datetime
 
-from config.logger_config import LoggerConfig
+from configs.logger_config import LoggerConfig
 from extract.realtime_extract import RealtimeExtract
 from load.realtime_load import RealtimeLoad
 

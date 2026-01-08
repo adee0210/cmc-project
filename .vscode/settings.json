@@ -4,5 +4,6 @@
         "${workspaceFolder}"
     ],
     "python.analysis.diagnosticMode": "workspace",
-    "postman.settings.dotenv-detection-notification-visibility": false
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "python-envs.pythonProjects": []
 }

@@ -7,13 +7,20 @@ class LoggerConfig:
 
     @staticmethod
     def logger_config(
-        log_name: str, log_file: str = "cmc_project.log", log_level: int = logging.INFO
+        log_name: str,
+        log_file: str = "logs/main_pipeline.log",
+        log_level: int = logging.INFO,
     ):
         # Lấy thư mục gốc của project (cmc-project/)
         # __file__ = /home/duc_le/cmc-project/config/logger_config.py
         # dirname(__file__) = /home/duc_le/cmc-project/config
         # dirname(dirname(__file__)) = /home/duc_le/cmc-project
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # Đảm bảo thư mục logs tồn tại
+        log_dir = os.path.join(root_dir, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+
         base_path = os.path.join(root_dir, log_file)
 
         # formatter
